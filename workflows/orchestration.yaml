@@ -5,7 +5,7 @@ main:
         assign:
           - api_base_url: ${args.api_base_url}
           - workload: ${args.workload}
-          - max_retries: 20
+          - max_retries: 60
           - retry_count: 0
           - sleep_seconds: 5
 
@@ -78,7 +78,7 @@ main:
 
     - handleTimeout:
         assign:
-          - job_state: "TIMED_OUT"
+          - job_state: "FAILED"
         next: extractTimestamps
 
     # 4. Compute runtime seconds from timestamps and calculate prorated actual cost
@@ -106,6 +106,8 @@ main:
         call: http.post
         args:
           url: ${api_base_url + "/api/v1/execution-callback"}
+          auth:
+            type: OIDC
           body:
             workload_id: ${workload.workload_id}
             decision_id: ${selected.candidate_id}

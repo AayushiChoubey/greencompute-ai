@@ -102,13 +102,7 @@ def health() -> dict[str, str]:
 def get_telemetry() -> List[Dict[str, Any]]:
     """Returns top 10 latest executions from BigQuery summary view."""
     query = """
-        SELECT 
-            workload_run_id, 
-            region, 
-            execution_status, 
-            actual_runtime_seconds, 
-            actual_cost, 
-            CAST(latest_status_at AS STRING) as latest_status_at
+        SELECT *
         FROM `greencompute-ai.greencompute_analytics.v_execution_summary` 
         ORDER BY latest_status_at DESC 
         LIMIT 10
@@ -205,19 +199,26 @@ def execute_decision(request: ExecuteRequest) -> ExecuteResponse:
 @app.post("/api/v1/execution-callback")
 def execution_callback(request: ExecutionCallbackRequest):
     """Logs the final execution state returned by Google Cloud Workflows."""
+    import logging
+    logger = logging.getLogger("uvicorn")
+    logger.info(f"Execution callback payload received: {request}")
+
+    # Ensure runtime and cost are packed into details for batch_client insertion
+    details = {
+        "actual_runtime_seconds": request.actual_runtime_seconds,
+        "actual_cost": request.actual_cost,
+    }
+
     batch_adapter.record_execution_event(
         workload_id=request.workload_id,
-        decision_id=request.decision_id,
-        execution_attempt_id=request.execution_attempt_id,
+        decision_id=request.decision_id or "dec_default",
+        execution_attempt_id=request.execution_attempt_id or f"exec_att_{uuid.uuid4().hex[:12]}",
         batch_job_id=request.batch_job_name,
         region=request.region,
         event_type=f"BATCH_{request.status}",
         status=request.status,
-        correlation_id=request.correlation_id,
-        details={
-            "actual_runtime_seconds": request.actual_runtime_seconds,
-            "actual_cost": request.actual_cost,
-        }
+        correlation_id=request.correlation_id or "",
+        details=details
     )
     return {"status": "recorded", "execution_status": request.status}
 
@@ -284,3 +285,22 @@ def ingest_workload_prompt(
         gemini_explanation=gemini_exp,
         workflow_execution=wf_result,
     )
+
+@app.get("/api/v1/workflows/status/{execution_id}")
+def get_workflow_status(execution_id: str):
+    """Fetches execution state directly via Google Cloud Workflows REST API."""
+    import google.auth
+    from google.auth.transport.requests import Request
+    import requests
+
+    try:
+        credentials, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
+        credentials.refresh(Request())
+        headers = {"Authorization": f"Bearer {credentials.token}"}
+        url = f"https://workflowexecutions.googleapis.com/v1/projects/greencompute-ai/locations/asia-south1/workflows/greencompute-orchestrator/executions/{execution_id}"
+        resp = requests.get(url, headers=headers, timeout=5)
+        if resp.status_code == 200:
+            return {"state": resp.json().get("state", "ACTIVE")}
+        return {"state": "ACTIVE"}
+    except Exception:
+        return {"state": "ACTIVE"}
