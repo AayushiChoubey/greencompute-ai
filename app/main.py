@@ -83,6 +83,7 @@ class PromptIngestionResponse(BaseModel):
     prompt: str
     parsed_spec: OptimizeRequest
     optimization_result: Optional[OptimizeResponse] = None
+    gemini_explanation: Optional[str] = None
     workflow_execution: Optional[dict] = None
 
 
@@ -142,6 +143,10 @@ def optimize_workload(request: OptimizeRequest) -> OptimizeResponse:
         )
     except Exception as e:
         print(f"Audit log warning: {e}")
+
+    # TRUNCATE to prevent Cloud Workflows MemoryLimitExceededError
+    if response.candidates:
+        response.candidates = response.candidates[:3]
 
     return response
 
@@ -249,8 +254,20 @@ def ingest_workload_prompt(
         raise HTTPException(status_code=400, detail=f"Failed to parse prompt spec: {str(e)}")
 
     opt_result = None
+    gemini_exp = None
     if request.auto_optimize or dispatch:
         opt_result = optimize_workload(parsed_spec)
+        if opt_result and opt_result.selected_candidate:
+            try:
+                alts = [c for c in opt_result.candidates if c.candidate_id != opt_result.selected_candidate.candidate_id]
+                gemini_exp = explainer.generate_explanation(
+                    request=parsed_spec,
+                    selected_candidate=opt_result.selected_candidate,
+                    top_alternatives=alts[:3]
+                )
+            except Exception as ex:
+                cand = opt_result.selected_candidate
+                gemini_exp = f"Selected {cand.region} on {cand.provisioning_model.value} providing optimal carbon intensity ({cand.carbon_score:.1f} gCO2e) and cost (${cand.estimated_compute_cost_usd:.4f})."
 
     wf_result = None
     if dispatch:
@@ -264,5 +281,6 @@ def ingest_workload_prompt(
         prompt=request.prompt,
         parsed_spec=parsed_spec,
         optimization_result=opt_result,
+        gemini_explanation=gemini_exp,
         workflow_execution=wf_result,
     )
