@@ -1,0 +1,8 @@
+fastapi>=0.115.0,<1.0.0
+uvicorn[standard]>=0.30.0,<1.0.0
+pydantic>=2.8.0,<3.0.0
+google-cloud-bigquery>=3.25.0
+google-cloud-batch>=0.14.0
+pytest>=8.0.0,<10.0.0
+google-genai>=0.1.1
+google-cloud-workflows>=1.14.0

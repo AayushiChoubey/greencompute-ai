@@ -1,0 +1,25 @@
+Defaulting to user installation because normal site-packages is not writeable
+Collecting google-cloud-workflows
+  Downloading google_cloud_workflows-1.23.0-py3-none-any.whl.metadata (9.4 kB)
+Requirement already satisfied: google-api-core<3.0.0,>=2.17.1 in /usr/local/lib/python3.12/dist-packages (from google-api-core[grpc]<3.0.0,>=2.17.1->google-cloud-workflows) (2.34.0)
+Requirement already satisfied: google-auth!=2.24.0,!=2.25.0,<3.0.0,>=2.14.1 in /usr/local/lib/python3.12/dist-packages (from google-cloud-workflows) (2.56.3)
+Requirement already satisfied: grpcio<2.0.0,>=1.59.0 in /usr/local/lib/python3.12/dist-packages (from google-cloud-workflows) (1.83.0)
+Requirement already satisfied: proto-plus<2.0.0,>=1.22.3 in /usr/local/lib/python3.12/dist-packages (from google-cloud-workflows) (1.28.3)
+Requirement already satisfied: protobuf<8.0.0,>=4.25.8 in /usr/local/lib/python3.12/dist-packages (from google-cloud-workflows) (6.33.6)
+Requirement already satisfied: googleapis-common-protos<2.0.0,>=1.69.2 in /usr/local/lib/python3.12/dist-packages (from google-api-core<3.0.0,>=2.17.1->google-api-core[grpc]<3.0.0,>=2.17.1->google-cloud-workflows) (1.75.1)
+Requirement already satisfied: requests<3.0.0,>=2.33.0 in /usr/local/lib/python3.12/dist-packages (from google-api-core<3.0.0,>=2.17.1->google-api-core[grpc]<3.0.0,>=2.17.1->google-cloud-workflows) (2.34.2)
+Requirement already satisfied: grpcio-status<2.0.0,>=1.59.0 in /usr/local/lib/python3.12/dist-packages (from google-api-core[grpc]<3.0.0,>=2.17.1->google-cloud-workflows) (1.83.0)
+Requirement already satisfied: pyasn1-modules>=0.2.1 in /usr/local/lib/python3.12/dist-packages (from google-auth!=2.24.0,!=2.25.0,<3.0.0,>=2.14.1->google-cloud-workflows) (0.4.2)
+Requirement already satisfied: cryptography>=38.0.3 in /usr/local/lib/python3.12/dist-packages (from google-auth!=2.24.0,!=2.25.0,<3.0.0,>=2.14.1->google-cloud-workflows) (50.0.0)
+Requirement already satisfied: typing-extensions~=4.12 in /usr/local/lib/python3.12/dist-packages (from grpcio<2.0.0,>=1.59.0->google-cloud-workflows) (4.16.0)
+Requirement already satisfied: cffi>=2.0.0 in /usr/local/lib/python3.12/dist-packages (from cryptography>=38.0.3->google-auth!=2.24.0,!=2.25.0,<3.0.0,>=2.14.1->google-cloud-workflows) (2.1.1)
+Requirement already satisfied: pyasn1<0.7.0,>=0.6.1 in /usr/local/lib/python3.12/dist-packages (from pyasn1-modules>=0.2.1->google-auth!=2.24.0,!=2.25.0,<3.0.0,>=2.14.1->google-cloud-workflows) (0.6.4)
+Requirement already satisfied: charset_normalizer<4,>=2 in /usr/local/lib/python3.12/dist-packages (from requests<3.0.0,>=2.33.0->google-api-core<3.0.0,>=2.17.1->google-api-core[grpc]<3.0.0,>=2.17.1->google-cloud-workflows) (3.4.9)
+Requirement already satisfied: idna<4,>=2.5 in /usr/local/lib/python3.12/dist-packages (from requests<3.0.0,>=2.33.0->google-api-core<3.0.0,>=2.17.1->google-api-core[grpc]<3.0.0,>=2.17.1->google-cloud-workflows) (3.18)
+Requirement already satisfied: urllib3<3,>=1.26 in /usr/local/lib/python3.12/dist-packages (from requests<3.0.0,>=2.33.0->google-api-core<3.0.0,>=2.17.1->google-api-core[grpc]<3.0.0,>=2.17.1->google-cloud-workflows) (2.7.0)
+Requirement already satisfied: certifi>=2023.5.7 in /usr/local/lib/python3.12/dist-packages (from requests<3.0.0,>=2.33.0->google-api-core<3.0.0,>=2.17.1->google-api-core[grpc]<3.0.0,>=2.17.1->google-cloud-workflows) (2026.7.22)
+Requirement already satisfied: pycparser in /usr/local/lib/python3.12/dist-packages (from cffi>=2.0.0->cryptography>=38.0.3->google-auth!=2.24.0,!=2.25.0,<3.0.0,>=2.14.1->google-cloud-workflows) (3.0)
+Downloading google_cloud_workflows-1.23.0-py3-none-any.whl (207 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 207.1/207.1 kB 5.6 MB/s eta 0:00:00
+Installing collected packages: google-cloud-workflows
+Successfully installed google-cloud-workflows-1.23.0

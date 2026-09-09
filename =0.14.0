@@ -1,0 +1,25 @@
+Defaulting to user installation because normal site-packages is not writeable
+Collecting google-cloud-batch
+  Downloading google_cloud_batch-0.22.3-py3-none-any.whl.metadata (9.2 kB)
+Requirement already satisfied: google-api-core<3.0.0,>=2.28.0 in /usr/local/lib/python3.12/dist-packages (from google-api-core[grpc]<3.0.0,>=2.28.0->google-cloud-batch) (2.34.0)
+Requirement already satisfied: google-auth!=2.24.0,!=2.25.0,<3.0.0,>=2.14.1 in /usr/local/lib/python3.12/dist-packages (from google-cloud-batch) (2.56.3)
+Requirement already satisfied: grpcio<2.0.0,>=1.59.0 in /usr/local/lib/python3.12/dist-packages (from google-cloud-batch) (1.83.0)
+Requirement already satisfied: proto-plus<2.0.0,>=1.26.1 in /usr/local/lib/python3.12/dist-packages (from google-cloud-batch) (1.28.3)
+Requirement already satisfied: protobuf<8.0.0,>=6.33.5 in /usr/local/lib/python3.12/dist-packages (from google-cloud-batch) (6.33.6)
+Requirement already satisfied: googleapis-common-protos<2.0.0,>=1.69.2 in /usr/local/lib/python3.12/dist-packages (from google-api-core<3.0.0,>=2.28.0->google-api-core[grpc]<3.0.0,>=2.28.0->google-cloud-batch) (1.75.1)
+Requirement already satisfied: requests<3.0.0,>=2.33.0 in /usr/local/lib/python3.12/dist-packages (from google-api-core<3.0.0,>=2.28.0->google-api-core[grpc]<3.0.0,>=2.28.0->google-cloud-batch) (2.34.2)
+Requirement already satisfied: grpcio-status<2.0.0,>=1.59.0 in /usr/local/lib/python3.12/dist-packages (from google-api-core[grpc]<3.0.0,>=2.28.0->google-cloud-batch) (1.83.0)
+Requirement already satisfied: pyasn1-modules>=0.2.1 in /usr/local/lib/python3.12/dist-packages (from google-auth!=2.24.0,!=2.25.0,<3.0.0,>=2.14.1->google-cloud-batch) (0.4.2)
+Requirement already satisfied: cryptography>=38.0.3 in /usr/local/lib/python3.12/dist-packages (from google-auth!=2.24.0,!=2.25.0,<3.0.0,>=2.14.1->google-cloud-batch) (50.0.0)
+Requirement already satisfied: typing-extensions~=4.12 in /usr/local/lib/python3.12/dist-packages (from grpcio<2.0.0,>=1.59.0->google-cloud-batch) (4.16.0)
+Requirement already satisfied: cffi>=2.0.0 in /usr/local/lib/python3.12/dist-packages (from cryptography>=38.0.3->google-auth!=2.24.0,!=2.25.0,<3.0.0,>=2.14.1->google-cloud-batch) (2.1.1)
+Requirement already satisfied: pyasn1<0.7.0,>=0.6.1 in /usr/local/lib/python3.12/dist-packages (from pyasn1-modules>=0.2.1->google-auth!=2.24.0,!=2.25.0,<3.0.0,>=2.14.1->google-cloud-batch) (0.6.4)
+Requirement already satisfied: charset_normalizer<4,>=2 in /usr/local/lib/python3.12/dist-packages (from requests<3.0.0,>=2.33.0->google-api-core<3.0.0,>=2.28.0->google-api-core[grpc]<3.0.0,>=2.28.0->google-cloud-batch) (3.4.9)
+Requirement already satisfied: idna<4,>=2.5 in /usr/local/lib/python3.12/dist-packages (from requests<3.0.0,>=2.33.0->google-api-core<3.0.0,>=2.28.0->google-api-core[grpc]<3.0.0,>=2.28.0->google-cloud-batch) (3.18)
+Requirement already satisfied: urllib3<3,>=1.26 in /usr/local/lib/python3.12/dist-packages (from requests<3.0.0,>=2.33.0->google-api-core<3.0.0,>=2.28.0->google-api-core[grpc]<3.0.0,>=2.28.0->google-cloud-batch) (2.7.0)
+Requirement already satisfied: certifi>=2023.5.7 in /usr/local/lib/python3.12/dist-packages (from requests<3.0.0,>=2.33.0->google-api-core<3.0.0,>=2.28.0->google-api-core[grpc]<3.0.0,>=2.28.0->google-cloud-batch) (2026.7.22)
+Requirement already satisfied: pycparser in /usr/local/lib/python3.12/dist-packages (from cffi>=2.0.0->cryptography>=38.0.3->google-auth!=2.24.0,!=2.25.0,<3.0.0,>=2.14.1->google-cloud-batch) (3.0)
+Downloading google_cloud_batch-0.22.3-py3-none-any.whl (183 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 183.2/183.2 kB 4.7 MB/s eta 0:00:00
+Installing collected packages: google-cloud-batch
+Successfully installed google-cloud-batch-0.22.3

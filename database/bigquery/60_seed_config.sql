@@ -1,0 +1,121 @@
+-- Synthetic MVP configuration snapshots.
+-- Run this file once.
+
+INSERT INTO `greencompute_config.workload_definition_versions` (
+  workload_definition_version_id,
+  workload_definition_id,
+  organization_id,
+  team_id,
+  cost_center_id,
+  version_number,
+  workload_name,
+  workload_type,
+  estimated_runtime_seconds,
+  required_cpu_millicores,
+  required_memory_mb,
+  checkpointable,
+  spot_eligible,
+  allowed_regions,
+  requested_timezone,
+  data_residency_requirement,
+  baseline_execution_profile,
+  valid_from,
+  created_at,
+  created_by,
+  schema_version
+)
+VALUES (
+  'wdv-nightly-sales-v1',
+  'wd-nightly-sales',
+  'org-retail-demo',
+  'team-analytics',
+  'cc-retail-data',
+  1,
+  'Nightly Sales ETL',
+  'BATCH_ANALYTICS',
+  10800,
+  8000,
+  32768,
+  TRUE,
+  TRUE,
+  ['asia-south1', 'asia-south2'],
+  'Asia/Kolkata',
+  'India-only',
+  JSON '{"region":"asia-south1","machine_type":"n2-standard-8","provisioning_model":"STANDARD"}',
+  CURRENT_TIMESTAMP(),
+  CURRENT_TIMESTAMP(),
+  'demo-admin',
+  1
+);
+
+INSERT INTO `greencompute_config.policy_versions` (
+  policy_version_id,
+  policy_id,
+  organization_id,
+  version_number,
+  policy_name,
+  allowed_regions,
+  minimum_reliability_score,
+  maximum_cost_increase_percent,
+  spot_allowed,
+  lower_carbon_preference,
+  fallback_execution_profile,
+  policy_rules,
+  effective_from,
+  effective_to,
+  created_at,
+  created_by,
+  schema_version
+)
+VALUES (
+  'pv-india-high-reliability-v1',
+  'policy-india-high-reliability',
+  'org-retail-demo',
+  1,
+  'India-only, high-reliability policy',
+  ['asia-south1', 'asia-south2'],
+  0.90,
+  5.0,
+  TRUE,
+  TRUE,
+  JSON '{"region":"asia-south1","machine_type":"n2-standard-8","provisioning_model":"STANDARD"}',
+  JSON '{"deadline_required":true,"residency":"India","spot_requires_checkpointing":true}',
+  CURRENT_TIMESTAMP(),
+  NULL,
+  CURRENT_TIMESTAMP(),
+  'demo-admin',
+  1
+);
+
+INSERT INTO `greencompute_config.data_asset_versions` (
+  data_asset_version_id,
+  data_asset_id,
+  organization_id,
+  version_number,
+  asset_name,
+  data_classification,
+  residency_regions,
+  source_region,
+  transfer_allowed,
+  transfer_constraints,
+  valid_from,
+  created_at,
+  created_by,
+  schema_version
+)
+VALUES (
+  'dav-sales-india-v1',
+  'da-sales-data',
+  'org-retail-demo',
+  1,
+  'Daily sales data',
+  'INTERNAL',
+  ['asia-south1', 'asia-south2'],
+  'asia-south1',
+  TRUE,
+  JSON '{"must_remain_in_india":true}',
+  CURRENT_TIMESTAMP(),
+  CURRENT_TIMESTAMP(),
+  'demo-admin',
+  1
+);
