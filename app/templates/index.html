@@ -83,20 +83,28 @@
 
           <div id="workflowStatusBox" class="hidden">
             <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Cloud Workflows Dispatch</h3>
-            <div class="bg-slate-950 border border-slate-800 rounded-lg p-3">
+            <div class="bg-slate-950 border border-slate-800 rounded-lg p-3 space-y-3">
               <div id="resWorkflow" class="text-xs text-emerald-400 font-mono whitespace-pre-wrap"></div>
               
               <!-- Active Loader & Timer -->
-              <div id="activeLoader" class="hidden flex items-center gap-3 mt-3 text-sm font-medium text-emerald-400 border-t border-slate-800 pt-3">
-                <svg class="animate-spin h-4 w-4 text-emerald-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                <span id="elapsedTimerText">⏱ Elapsed: 0s</span>
+              <div id="activeLoader" class="hidden flex items-center justify-between border-t border-slate-800 pt-3">
+                <div class="flex items-center gap-2 text-xs font-medium text-amber-400">
+                  <svg class="animate-spin h-4 w-4 text-amber-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <span>Dispatching Batch Containers...</span>
+                </div>
+                <span id="elapsedTimerText" class="font-mono text-xs text-emerald-400 bg-emerald-950/40 px-2 py-0.5 rounded border border-emerald-800">⏱ Elapsed: 0s</span>
               </div>
 
               <!-- View Live Logs Button -->
-              <a href="https://console.cloud.google.com/logs/query;query=resource.type%3D%22cloud_run_revision%22%20OR%20resource.type%3D%22cloud_batch_job%22" target="_blank" class="mt-3 inline-flex items-center gap-1.5 text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded transition border border-slate-700">
-                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
-                View Live Logs
-              </a>
+              <div class="pt-1">
+                <a id="logsLink" href="https://console.cloud.google.com/logs/query;query=resource.type%3D%22cloud_run_revision%22%20OR%20resource.type%3D%22cloud_batch_job%22?project=greencompute-ai" target="_blank" class="inline-flex items-center gap-1.5 text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded transition border border-slate-700">
+                  <svg class="w-3 h-3 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                  View Live Cloud Logs ↗
+                </a>
+              </div>
             </div>
           </div>
         </div>
@@ -119,7 +127,7 @@
                 </tr>
               </thead>
               <tbody id="telemetryRows" class="divide-y divide-slate-800">
-                <tr><td colspan="5" class="p-4 text-center text-slate-500">Loading empirical telemetry from BigQuery...</td></tr>
+                <tr><td colspan="6" class="p-4 text-center text-slate-500">Loading empirical telemetry from BigQuery...</td></tr>
               </tbody>
             </table>
           </div>
@@ -129,14 +137,17 @@
   </div>
 
   <!-- Telemetry JSON Modal -->
-  <div id="jsonModal" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-    <div class="bg-slate-900 border border-slate-800 rounded-xl max-w-2xl w-full max-h-[80vh] flex flex-col shadow-2xl">
+  <div id="jsonModal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-2xl">
       <div class="p-4 border-b border-slate-800 flex justify-between items-center">
-        <h3 class="font-semibold text-white">Execution Metadata Trace</h3>
-        <button onclick="closeModal()" class="text-slate-400 hover:text-white transition text-2xl">&times;</button>
+        <h3 class="font-semibold text-sm text-white">Execution Event Telemetry Record</h3>
+        <button onclick="closeModal()" class="text-slate-400 hover:text-white transition text-xl px-2">&times;</button>
       </div>
-      <div class="p-4 overflow-auto bg-slate-950/50">
-        <pre id="jsonContent" class="text-xs text-emerald-400 font-mono whitespace-pre-wrap"></pre>
+      <div class="p-4 overflow-auto bg-slate-950">
+        <pre id="jsonContent" class="text-xs text-emerald-300 font-mono whitespace-pre-wrap"></pre>
+      </div>
+      <div class="p-3 border-t border-slate-800 flex justify-end">
+        <button onclick="closeModal()" class="px-4 py-1 text-xs bg-slate-800 hover:bg-slate-700 rounded text-slate-200">Close</button>
       </div>
     </div>
   </div>
@@ -145,6 +156,27 @@
     let telemetryData = [];
     let pollInterval = null;
     let timerInterval = null;
+    let startTime = null;
+
+    function startElapsedTimer() {
+      clearInterval(timerInterval);
+      startTime = Date.now();
+      const timerEl = document.getElementById('elapsedTimerText');
+      const loaderEl = document.getElementById('activeLoader');
+      if (loaderEl) loaderEl.classList.remove('hidden');
+      if (timerEl) timerEl.innerText = '⏱ Elapsed: 0s';
+
+      timerInterval = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        if (timerEl) timerEl.innerText = `⏱ Elapsed: ${elapsed}s`;
+      }, 1000);
+    }
+
+    function stopElapsedTimer() {
+      clearInterval(timerInterval);
+      const loaderEl = document.getElementById('activeLoader');
+      if (loaderEl) loaderEl.classList.add('hidden');
+    }
 
     async function runDispatch(dispatch) {
       const prompt = document.getElementById('promptInput').value;
@@ -152,11 +184,9 @@
       const optBtn = document.getElementById('optimizeBtn');
       const dispBtn = document.getElementById('dispatchBtn');
       const wfBox = document.getElementById('workflowStatusBox');
-      const loader = document.getElementById('activeLoader');
-      const timerText = document.getElementById('elapsedTimerText');
       
       clearInterval(pollInterval);
-      clearInterval(timerInterval);
+      stopElapsedTimer();
 
       optBtn.disabled = true;
       dispBtn.disabled = true;
@@ -170,13 +200,9 @@
           body: JSON.stringify({ prompt: prompt, auto_optimize: true })
         });
         
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-        }
+        if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
         
         const data = await res.json();
-        console.log('Ingestion response:', data);
-
         const opt = data.optimization_result;
         if (opt && opt.selected_candidate) {
           const cand = opt.selected_candidate;
@@ -200,6 +226,8 @@
 
         if (data.workflow_execution) {
           wfBox.classList.remove('hidden');
+          startElapsedTimer();
+          
           const wf = data.workflow_execution;
           const execName = wf.workflow_execution_name || wf.name || '';
           const execId = execName.split('/').pop();
@@ -210,9 +238,8 @@
           badgeStatus.className = "px-2.5 py-0.5 text-xs font-semibold rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/30";
           badgeStatus.innerText = 'WORKFLOW EXECUTING';
 
-          // Live poll Cloud Workflows execution state until SUCCEEDED
           let pollCount = 0;
-          const pollTimer = setInterval(async () => {
+          pollInterval = setInterval(async () => {
             pollCount++;
             try {
               const statusRes = await fetch(`/api/v1/workflows/status/${execId}`);
@@ -223,12 +250,14 @@
                   `Workflow Execution Dispatched:\n${execName}\nStatus: ${currentState}`;
 
                 if (currentState === 'SUCCEEDED') {
-                  cleanupPolling();
+                  clearInterval(pollInterval);
+                  stopElapsedTimer();
                   badgeStatus.className = "px-2.5 py-0.5 text-xs font-semibold rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30";
                   badgeStatus.innerText = 'EXECUTION COMPLETE';
                   fetchTelemetry();
                 } else if (currentState === 'FAILED') {
-                  cleanupPolling();
+                  clearInterval(pollInterval);
+                  stopElapsedTimer();
                   badgeStatus.className = "px-2.5 py-0.5 text-xs font-semibold rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/30";
                   badgeStatus.innerText = 'EXECUTION FAILED';
                   fetchTelemetry();
@@ -237,17 +266,17 @@
             } catch (e) {
               console.error('Polling error:', e);
             }
+            if (pollCount > 40) {
+              clearInterval(pollInterval);
+              stopElapsedTimer();
+            }
           }, 3500);
-
-          function cleanupPolling() {
-            clearInterval(pollInterval);
-            clearInterval(timerInterval);
-            loader.classList.add('hidden');
-          }
         } else if (!dispatch) {
           wfBox.classList.add('hidden');
+          stopElapsedTimer();
         }
       } catch (err) {
+        stopElapsedTimer();
         badgeStatus.className = "px-2.5 py-0.5 text-xs font-semibold rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/30";
         badgeStatus.innerText = 'EVALUATION FAILED';
         console.error('Dispatch error:', err);
@@ -262,16 +291,37 @@
       try {
         const res = await fetch('/api/v1/telemetry');
         const data = await res.json();
+        telemetryData = data;
         const tbody = document.getElementById('telemetryRows');
         tbody.innerHTML = '';
-        data.forEach(r => {
+        
+        if (!data || data.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-slate-500">No telemetry events recorded yet.</td></tr>';
+          return;
+        }
+
+        data.forEach((r, idx) => {
           const tr = document.createElement('tr');
+          const isSuccess = r.execution_status === 'SUCCEEDED';
+          const workloadName = r.workload_run_id || r.workload_id || '—';
+          const costVal = r.actual_cost !== null && r.actual_cost !== undefined ? `$${Number(r.actual_cost).toFixed(6)}` : 'NULL';
+          const runtimeVal = r.actual_runtime_seconds !== null && r.actual_runtime_seconds !== undefined ? `${r.actual_runtime_seconds}s` : 'NULL';
+          
           tr.innerHTML = `
-            <td class="p-2.5 font-mono text-slate-200">${r.workload_run_id}</td>
-            <td class="p-2.5">${r.region}</td>
-            <td class="p-2.5"><span class="px-2 py-0.5 rounded text-[10px] ${r.execution_status === 'SUCCEEDED' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-slate-800 text-slate-400'}">${r.execution_status}</span></td>
-            <td class="p-2.5 font-mono">${r.actual_runtime_seconds !== null ? r.actual_runtime_seconds + 's' : 'NULL'}</td>
-            <td class="p-2.5 font-mono">${r.actual_cost !== null ? '$' + Number(r.actual_cost).toFixed(6) : 'NULL'}</td>
+            <td class="p-2.5 font-mono text-slate-200">${workloadName}</td>
+            <td class="p-2.5">${r.region || '—'}</td>
+            <td class="p-2.5">
+              <span class="px-2 py-0.5 rounded text-[10px] ${isSuccess ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-slate-800 text-slate-400'}">
+                ${r.execution_status || 'UNKNOWN'}
+              </span>
+            </td>
+            <td class="p-2.5 font-mono">${runtimeVal}</td>
+            <td class="p-2.5 font-mono">${costVal}</td>
+            <td class="p-2.5 text-right">
+              <button onclick="showJson(${idx})" class="px-2 py-0.5 rounded text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono border border-slate-700 transition">
+                { } JSON
+              </button>
+            </td>
           `;
           tbody.appendChild(tr);
         });

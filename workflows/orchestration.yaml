@@ -101,13 +101,14 @@ main:
           - actual_seconds: ${int(math.max(delta_raw, 1))}
           - actual_cost: ${double(hourly_rate * (actual_seconds / 3600.0))}
 
-    # 5. Send status callback to log real runtime in BigQuery execution ledger
+    # 5. Send status callback to log real runtime in BigQuery execution ledger with OIDC audience
     - notifyCallback:
         call: http.post
         args:
           url: ${api_base_url + "/api/v1/execution-callback"}
           auth:
             type: OIDC
+            audience: ${api_base_url}
           body:
             workload_id: ${workload.workload_id}
             decision_id: ${selected.candidate_id}

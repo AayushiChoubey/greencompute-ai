@@ -7,6 +7,9 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
+import google.auth
+from google.auth.transport.requests import Request as GoogleAuthRequest
+import requests
 
 from app.models import OptimizeRequest, OptimizeResponse, Candidate
 from app.optimizer import optimize
@@ -50,14 +53,14 @@ class ExecuteResponse(BaseModel):
 
 class ExecutionCallbackRequest(BaseModel):
     workload_id: str
-    decision_id: str
-    execution_attempt_id: str
+    decision_id: Optional[str] = "dec_default"
+    execution_attempt_id: Optional[str] = None
     batch_job_name: str
     region: str
     status: str
-    actual_runtime_seconds: int = 45
-    actual_cost: float = 0.0006
-    correlation_id: str
+    actual_runtime_seconds: Optional[int] = 45
+    actual_cost: Optional[float] = 0.0006
+    correlation_id: Optional[str] = ""
 
 
 class ExplainRequest(BaseModel):
@@ -100,19 +103,24 @@ def health() -> dict[str, str]:
 
 @app.get("/api/v1/telemetry")
 def get_telemetry() -> List[Dict[str, Any]]:
-    """Returns top 10 latest executions from BigQuery summary view."""
-    query = """
-        SELECT *
-        FROM `greencompute-ai.greencompute_analytics.v_execution_summary` 
-        ORDER BY latest_status_at DESC 
-        LIMIT 10
-    """
-    try:
-        results = bq_client.client.query(query).result()
-        rows = [dict(row) for row in results]
-        return rows
-    except Exception as e:
-        return []
+    """Returns latest executions from BigQuery summary view, checking both schema locations."""
+    queries = [
+        "SELECT * FROM `greencompute-ai.greencompute_events.v_execution_summary` ORDER BY last_event_time DESC LIMIT 10",
+        "SELECT * FROM `greencompute-ai.greencompute_analytics.v_execution_summary` ORDER BY latest_status_at DESC LIMIT 10"
+    ]
+    for q in queries:
+        try:
+            results = bq_client.client.query(q).result()
+            rows = [dict(row) for row in results]
+            for r in rows:
+                for k, v in r.items():
+                    if hasattr(v, "isoformat"):
+                        r[k] = v.isoformat()
+            if rows:
+                return rows
+        except Exception:
+            continue
+    return []
 
 
 @app.post("/api/v1/optimize", response_model=OptimizeResponse)
@@ -138,7 +146,6 @@ def optimize_workload(request: OptimizeRequest) -> OptimizeResponse:
     except Exception as e:
         print(f"Audit log warning: {e}")
 
-    # TRUNCATE to prevent Cloud Workflows MemoryLimitExceededError
     if response.candidates:
         response.candidates = response.candidates[:3]
 
@@ -147,7 +154,7 @@ def optimize_workload(request: OptimizeRequest) -> OptimizeResponse:
 
 @app.post("/api/v1/execute", response_model=ExecuteResponse)
 def execute_decision(request: ExecuteRequest) -> ExecuteResponse:
-    """Submits the chosen candidate plan to Google Cloud Batch and records execution event."""
+    """Submits chosen candidate plan to Cloud Batch and logs SUBMITTED event."""
     execution_attempt_id = f"exec_att_{uuid.uuid4().hex[:12]}"
     candidate = request.selected_candidate
 
@@ -198,12 +205,24 @@ def execute_decision(request: ExecuteRequest) -> ExecuteResponse:
 
 @app.post("/api/v1/execution-callback")
 def execution_callback(request: ExecutionCallbackRequest):
-    """Logs the final execution state returned by Google Cloud Workflows."""
-    import logging
-    logger = logging.getLogger("uvicorn")
-    logger.info(f"Execution callback payload received: {request}")
+    """Logs the terminal execution state returned by Google Cloud Workflows."""
+    attempt_id = request.execution_attempt_id
+    if not attempt_id:
+        try:
+            lookup_q = f"""
+                SELECT execution_attempt_id 
+                FROM `greencompute-ai.greencompute_events.execution_events`
+                WHERE workload_run_id = '{request.workload_id}' AND execution_status = 'SUBMITTED'
+                ORDER BY event_timestamp DESC LIMIT 1
+            """
+            res = list(bq_client.client.query(lookup_q).result())
+            if res:
+                attempt_id = res[0].execution_attempt_id
+        except Exception:
+            pass
 
-    # Ensure runtime and cost are packed into details for batch_client insertion
+    final_attempt_id = attempt_id or f"exec_att_{uuid.uuid4().hex[:12]}"
+
     details = {
         "actual_runtime_seconds": request.actual_runtime_seconds,
         "actual_cost": request.actual_cost,
@@ -212,7 +231,7 @@ def execution_callback(request: ExecutionCallbackRequest):
     batch_adapter.record_execution_event(
         workload_id=request.workload_id,
         decision_id=request.decision_id or "dec_default",
-        execution_attempt_id=request.execution_attempt_id or f"exec_att_{uuid.uuid4().hex[:12]}",
+        execution_attempt_id=final_attempt_id,
         batch_job_id=request.batch_job_name,
         region=request.region,
         event_type=f"BATCH_{request.status}",
@@ -220,7 +239,7 @@ def execution_callback(request: ExecutionCallbackRequest):
         correlation_id=request.correlation_id or "",
         details=details
     )
-    return {"status": "recorded", "execution_status": request.status}
+    return {"status": "recorded", "execution_status": request.status, "execution_attempt_id": final_attempt_id}
 
 
 @app.post("/api/v1/explain", response_model=ExplainResponse)
@@ -266,7 +285,7 @@ def ingest_workload_prompt(
                     selected_candidate=opt_result.selected_candidate,
                     top_alternatives=alts[:3]
                 )
-            except Exception as ex:
+            except Exception:
                 cand = opt_result.selected_candidate
                 gemini_exp = f"Selected {cand.region} on {cand.provisioning_model.value} providing optimal carbon intensity ({cand.carbon_score:.1f} gCO2e) and cost (${cand.estimated_compute_cost_usd:.4f})."
 
@@ -286,16 +305,13 @@ def ingest_workload_prompt(
         workflow_execution=wf_result,
     )
 
+
 @app.get("/api/v1/workflows/status/{execution_id}")
 def get_workflow_status(execution_id: str):
     """Fetches execution state directly via Google Cloud Workflows REST API."""
-    import google.auth
-    from google.auth.transport.requests import Request
-    import requests
-
     try:
         credentials, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
-        credentials.refresh(Request())
+        credentials.refresh(GoogleAuthRequest())
         headers = {"Authorization": f"Bearer {credentials.token}"}
         url = f"https://workflowexecutions.googleapis.com/v1/projects/greencompute-ai/locations/asia-south1/workflows/greencompute-orchestrator/executions/{execution_id}"
         resp = requests.get(url, headers=headers, timeout=5)
