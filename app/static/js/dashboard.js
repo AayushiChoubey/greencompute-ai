@@ -1,6 +1,7 @@
 let telemetryData = [];
 let pollInterval = null;
 let timerInterval = null;
+let telemetryPollInterval = null;
 let startTime = null;
 
 function startElapsedTimer() {
@@ -161,7 +162,6 @@ async function fetchTelemetry() {
       const isSuccess = r.execution_status === 'SUCCEEDED';
       const workloadName = r.workload_run_id || r.workload_id || '—';
       
-      // Safe parsing to prevent toFixed from throwing on string/null values
       let costVal = 'NULL';
       if (r.actual_cost !== null && r.actual_cost !== undefined && r.actual_cost !== '') {
         const num = Number(r.actual_cost);
@@ -211,4 +211,8 @@ function closeModal() {
   if (modalEl) modalEl.classList.add('hidden');
 }
 
-window.addEventListener('DOMContentLoaded', fetchTelemetry);
+window.addEventListener('DOMContentLoaded', () => {
+  fetchTelemetry();
+  // Auto-refresh telemetry every 10 seconds
+  telemetryPollInterval = setInterval(fetchTelemetry, 10000);
+});
