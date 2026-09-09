@@ -9,7 +9,8 @@ from app.optimizer import optimize
 from app.dependencies import bq_client, explainer, prompt_parser, workflow_adapter
 from pydantic import BaseModel
 
-router = APIRouter(prefix="/api/v1", tags=["Optimization"])
+# Remove the internal prefix here as it is managed by the main app entrypoint
+router = APIRouter(tags=["Optimization"])
 
 
 class ExplainRequest(BaseModel):
