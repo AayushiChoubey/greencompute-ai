@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GreenCompute AI — Intelligent Carbon & Cost Orchestration</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>body { font-family: 'Inter', sans-serif; } code, pre { font-family: 'JetBrains Mono', monospace; }</style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+  <div class="max-w-6xl mx-auto px-4 py-8">
+    <header class="border-b border-slate-800 pb-6 mb-8 flex justify-between items-center">
+      <div>
+        <h1 class="text-3xl font-bold bg-gradient-to-r from-emerald-400 to-teal-200 bg-clip-text text-transparent">GreenCompute AI</h1>
+        <p class="text-slate-400 text-sm mt-1">Autonomous Carbon-Aware Batch Compute Placement on Google Cloud</p>
+      </div>
+      <span class="px-3 py-1 text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 rounded-full">Gemini 2.5 Flash + Cloud Batch</span>
+    </header>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <!-- Left Column: Input Form -->
+      <div class="lg:col-span-1 space-y-6">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl">
+          <h2 class="text-lg font-semibold text-white mb-3">Natural Language Dispatch</h2>
+          <p class="text-xs text-slate-400 mb-4">Prompt Gemini to extract SLAs, compute specs, and dispatch via Cloud Workflows.</p>
+          
+          <textarea id="promptInput" rows="5" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-sm text-slate-200 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500" placeholder="e.g. Execute an algorithmic bond pricing risk simulation before tomorrow 12 PM UTC. Dataset is portable, needs 4 vCPUs and 16GB memory. Spot instances preferred.">Execute an algorithmic bond pricing risk simulation before tomorrow 12 PM UTC. Dataset is portable, needs 4 vCPUs and 16GB memory. Spot instances preferred.</textarea>
+
+          <div class="mt-4 flex flex-col gap-2">
+            <button id="optimizeBtn" onclick="runDispatch(false)" class="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 py-2 rounded-lg font-medium text-sm transition">1. Evaluate & Explain Plan</button>
+            <button id="dispatchBtn" onclick="runDispatch(true)" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 py-2.5 rounded-lg font-semibold text-sm transition shadow-lg shadow-emerald-500/20">2. Dispatch Live Workflow</button>
+          </div>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-6">
+          <h3 class="text-sm font-semibold text-slate-300 mb-2">Live Cloud Stack</h3>
+          <ul class="text-xs text-slate-400 space-y-1.5">
+            <li>• <strong class="text-slate-300">FastAPI:</strong> Deterministic Optimization Core</li>
+            <li>• <strong class="text-slate-300">Gemini 2.5 Flash:</strong> Spec Parsing & Explainability</li>
+            <li>• <strong class="text-slate-300">Cloud Workflows:</strong> Multi-region Orchestrator</li>
+            <li>• <strong class="text-slate-300">Cloud Batch:</strong> Containerized Workload Compute</li>
+            <li>• <strong class="text-slate-300">BigQuery:</strong> Grid Emissions & Closed-Loop Telemetry</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Right Column: Results and Trace -->
+      <div class="lg:col-span-2 space-y-6">
+        <div id="resultBox" class="bg-slate-900 border border-slate-800 rounded-xl p-6 hidden">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+            <h2 class="text-lg font-semibold text-white">Execution Plan & Decision</h2>
+            <span id="badgeStatus" class="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/30">PLAN READY</span>
+          </div>
+
+          <!-- Key Metrics -->
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+            <div class="bg-slate-950 p-3 rounded-lg border border-slate-800">
+              <span class="text-xs text-slate-400 block">Selected Region</span>
+              <span id="resRegion" class="text-base font-bold text-emerald-400">-</span>
+            </div>
+            <div class="bg-slate-950 p-3 rounded-lg border border-slate-800">
+              <span class="text-xs text-slate-400 block">Instance Tier</span>
+              <span id="resTier" class="text-base font-bold text-white">-</span>
+            </div>
+            <div class="bg-slate-950 p-3 rounded-lg border border-slate-800">
+              <span class="text-xs text-slate-400 block">Grid Carbon</span>
+              <span id="resCarbon" class="text-base font-bold text-teal-300">-</span>
+            </div>
+            <div class="bg-slate-950 p-3 rounded-lg border border-slate-800">
+              <span class="text-xs text-slate-400 block">Est. Cost</span>
+              <span id="resCost" class="text-base font-bold text-amber-400">-</span>
+            </div>
+          </div>
+
+          <div class="mb-5">
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Gemini Executive Trade-off Analysis</h3>
+            <div id="resExplanation" class="bg-slate-950 border border-slate-800 rounded-lg p-4 text-xs leading-relaxed text-slate-300 whitespace-pre-wrap"></div>
+          </div>
+
+          <div id="workflowStatusBox" class="hidden">
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Cloud Workflows Dispatch</h3>
+            <div id="resWorkflow" class="bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs text-emerald-400 font-mono"></div>
+          </div>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-6">
+          <div class="flex justify-between items-center mb-4">
+            <h2 class="text-base font-semibold text-white">Empirical Telemetry (BigQuery v_execution_summary)</h2>
+            <button onclick="fetchTelemetry()" class="text-xs text-emerald-400 hover:text-emerald-300">↻ Refresh</button>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs text-slate-300">
+              <thead class="bg-slate-950 text-slate-400 uppercase text-[10px]">
+                <tr>
+                  <th class="p-2.5">Workload ID</th>
+                  <th class="p-2.5">Region</th>
+                  <th class="p-2.5">Status</th>
+                  <th class="p-2.5">Actual Runtime</th>
+                  <th class="p-2.5">Actual Cost</th>
+                </tr>
+              </thead>
+              <tbody id="telemetryRows" class="divide-y divide-slate-800">
+                <tr><td colspan="5" class="p-4 text-center text-slate-500">Loading empirical telemetry from BigQuery...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    async function runDispatch(dispatch) {
+      const prompt = document.getElementById('promptInput').value;
+      const resultBox = document.getElementById('resultBox');
+      const badgeStatus = document.getElementById('badgeStatus');
+      
+      resultBox.classList.remove('hidden');
+      badgeStatus.innerText = dispatch ? 'DISPATCHING TO CLOUD WORKFLOWS...' : 'OPTIMIZING...';
+      
+      try {
+        const res = await fetch(`/api/v1/workloads/from-prompt?dispatch=${dispatch}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: prompt, auto_optimize: true })
+        });
+        const data = await res.json();
+        
+        const opt = data.optimization_result;
+        if (opt && opt.selected_candidate) {
+          const cand = opt.selected_candidate;
+          document.getElementById('resRegion').innerText = cand.region;
+          document.getElementById('resTier').innerText = `${cand.machine_type} (${cand.provisioning_model})`;
+          document.getElementById('resCarbon').innerText = `${cand.carbon_intensity} gCO2e`;
+          document.getElementById('resCost').innerText = `$${cand.total_cost_usd.toFixed(4)}`;
+          document.getElementById('resExplanation').innerText = opt.reason || "Optimal allocation selected based on lowest carbon intensity, cost efficiency, and hard SLA compliance.";
+          badgeStatus.innerText = 'OPTIMIZATION COMPLETE';
+        }
+
+        const wfBox = document.getElementById('workflowStatusBox');
+        if (data.workflow_execution) {
+          wfBox.classList.remove('hidden');
+          document.getElementById('resWorkflow').innerText = `Execution Dispatched:\n${data.workflow_execution.workflow_execution_name}\nStatus: ${data.workflow_execution.status}`;
+          badgeStatus.innerText = 'WORKFLOW EXECUTING';
+          setTimeout(fetchTelemetry, 3000);
+        } else {
+          wfBox.classList.add('hidden');
+        }
+      } catch (err) {
+        alert("Error executing request: " + err);
+      }
+    }
+
+    async function fetchTelemetry() {
+      try {
+        const res = await fetch('/api/v1/telemetry');
+        const data = await res.json();
+        const tbody = document.getElementById('telemetryRows');
+        tbody.innerHTML = '';
+        data.forEach(r => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td class="p-2.5 font-mono text-slate-200">${r.workload_run_id}</td>
+            <td class="p-2.5">${r.region}</td>
+            <td class="p-2.5"><span class="px-2 py-0.5 rounded text-[10px] ${r.execution_status === 'SUCCEEDED' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-slate-800 text-slate-400'}">${r.execution_status}</span></td>
+            <td class="p-2.5 font-mono">${r.actual_runtime_seconds !== null ? r.actual_runtime_seconds + 's' : 'NULL'}</td>
+            <td class="p-2.5 font-mono">${r.actual_cost !== null ? '$' + Number(r.actual_cost).toFixed(6) : 'NULL'}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+      } catch (e) {
+        console.error("Failed to load telemetry:", e);
+      }
+    }
+
+    window.onload = fetchTelemetry;
+  </script>
+</body>
+</html>

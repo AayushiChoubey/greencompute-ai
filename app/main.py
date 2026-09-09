@@ -1,9 +1,13 @@
 """HTTP API entrypoint for GreenCompute."""
 
+import os
 import uuid
-from typing import List, Optional
-from fastapi import FastAPI, HTTPException, Query
+from typing import List, Optional, Any, Dict
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
+
 from app.models import OptimizeRequest, OptimizeResponse, Candidate
 from app.optimizer import optimize
 from app.bigquery_client import BigQueryClient
@@ -17,6 +21,8 @@ app = FastAPI(
     version="0.4.0",
     description="Deterministic optimization, Batch dispatch, Cloud Workflows orchestration, and Gemini explainability.",
 )
+
+templates = Jinja2Templates(directory="app/templates")
 
 bq_client = BigQueryClient()
 batch_adapter = CloudBatchAdapter()
@@ -80,9 +86,38 @@ class PromptIngestionResponse(BaseModel):
     workflow_execution: Optional[dict] = None
 
 
+@app.get("/", response_class=HTMLResponse)
+def serve_dashboard(request: Request):
+    """Serves the GreenCompute interactive UI dashboard."""
+    return templates.TemplateResponse(request=request, name="index.html")
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "service": "greencompute-api"}
+
+
+@app.get("/api/v1/telemetry")
+def get_telemetry() -> List[Dict[str, Any]]:
+    """Returns top 10 latest executions from BigQuery summary view."""
+    query = """
+        SELECT 
+            workload_run_id, 
+            region, 
+            execution_status, 
+            actual_runtime_seconds, 
+            actual_cost, 
+            CAST(latest_status_at AS STRING) as latest_status_at
+        FROM `greencompute-ai.greencompute_analytics.v_execution_summary` 
+        ORDER BY latest_status_at DESC 
+        LIMIT 10
+    """
+    try:
+        results = bq_client.client.query(query).result()
+        rows = [dict(row) for row in results]
+        return rows
+    except Exception as e:
+        return []
 
 
 @app.post("/api/v1/optimize", response_model=OptimizeResponse)
@@ -214,7 +249,7 @@ def ingest_workload_prompt(
         raise HTTPException(status_code=400, detail=f"Failed to parse prompt spec: {str(e)}")
 
     opt_result = None
-    if request.auto_optimize and not dispatch:
+    if request.auto_optimize or dispatch:
         opt_result = optimize_workload(parsed_spec)
 
     wf_result = None
