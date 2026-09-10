@@ -51,6 +51,7 @@ SELECT
   c.is_feasible,
   c.rejection_reasons,
   c.pareto_rank,
+  c.final_score,
   c.candidate_rank,
   d.decision_type,
   d.is_selected

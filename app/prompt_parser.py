@@ -34,9 +34,10 @@ Target JSON Schema Structure:
   "workload_name": string,
   "workload_id": string,
   "policy_version_id": "pol_v1_default",
-  "data_location_type": "PORTABLE" | "STRICT_LOCAL",
+  "data_location_type": "PORTABLE" | "DATA_LOCAL" | "REPLICATED",
   "home_region": string,
   "allowed_regions": [string],
+  "approved_replica_regions": [string],
   "required_vcpus": integer,
   "required_memory_gb": integer,
   "estimated_runtime_minutes": integer or null,
@@ -44,7 +45,11 @@ Target JSON Schema Structure:
   "deadline_at": string (ISO-8601 UTC),
   "minimum_reliability_score": float (between 0.0 and 1.0),
   "spot_allowed": boolean,
-  "checkpointable": boolean
+  "checkpointable": boolean,
+  "start_mode": "EXACT" | "FLEXIBLE",
+  "minimum_sla_buffer_minutes": integer,
+  "maximum_cost_increase_percent": float or null,
+  "objective_weights": {{"cost": float, "carbon": float, "reliability": float, "sla_buffer": float}}
 }}
 
 Reference Time (UTC): {current_time_iso}
@@ -54,11 +59,16 @@ Rules:
 2. "estimated_runtime_minutes": Extract if mentioned. If NOT specified by the user, return null.
 3. "required_vcpus" and "required_memory_gb": Default to 4 and 16 if omitted.
 4. "home_region": Default to "asia-south1".
-5. "allowed_regions": If data_location_type is "PORTABLE", default to ["asia-south1", "europe-west1"]. If "STRICT_LOCAL", allow only [home_region].
-6. "data_location_type": Use "STRICT_LOCAL" if data must remain local/compliant; otherwise "PORTABLE".
-7. Timestamps: Compute ISO-8601 UTC timestamps relative to reference time. "earliest_start_at" defaults to reference time.
-8. Reliability: If spot/preemptible is accepted, set spot_allowed=true, checkpointable=true, minimum_reliability_score=0.80. Otherwise set spot_allowed=false, checkpointable=false, minimum_reliability_score=0.99.
-9. Return ONLY the raw JSON object. No Markdown code fences or extra text.
+5. "allowed_regions": Preserve every region explicitly named by the user. If PORTABLE and none are named, default to ["asia-south1", "europe-west1"]. If DATA_LOCAL, allow only [home_region].
+6. "data_location_type": Use "DATA_LOCAL" when data must remain local or in its home region; use "REPLICATED" when approved replicas are named; otherwise use "PORTABLE".
+7. "approved_replica_regions": For REPLICATED data, include only the regions where the user says a replica exists. Otherwise return an empty list.
+8. Timestamps: Compute ISO-8601 UTC timestamps relative to reference time. "earliest_start_at" defaults to reference time.
+9. "start_mode": Use "EXACT" only when the user insists on an exact start time; otherwise use "FLEXIBLE".
+10. Reliability: Respect explicit checkpointing and reliability requirements. Spot may be allowed only when the user permits Spot/preemptible execution; never infer checkpointable=true when the user explicitly says it is not checkpointable.
+11. "minimum_sla_buffer_minutes": Preserve an explicit buffer; otherwise use 30.
+12. "maximum_cost_increase_percent": Preserve an explicit maximum sustainability premium; otherwise return null.
+13. "objective_weights": Return four values that sum exactly to 1.0. Default to cost=0.45, carbon=0.25, reliability=0.25, sla_buffer=0.05. Adjust them only when the user explicitly prioritizes an objective.
+14. Return ONLY the raw JSON object. No Markdown code fences or extra text.
 
 User Workload Request:
 "{prompt_text}"
@@ -79,6 +89,11 @@ User Workload Request:
         cleaned_json = re.sub(r"^```json\s*", "", cleaned_json)
         cleaned_json = re.sub(r"\s*```$", "", cleaned_json)
         data = json.loads(cleaned_json)
+
+        # Backward compatibility for responses produced from an older parser
+        # prompt. STRICT_LOCAL was never a valid API enum.
+        if data.get("data_location_type") == "STRICT_LOCAL":
+            data["data_location_type"] = "DATA_LOCAL"
 
         # Fallback to BigQuery historical runtime if not specified in prompt
         if not data.get("estimated_runtime_minutes"):

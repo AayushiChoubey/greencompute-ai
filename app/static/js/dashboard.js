@@ -51,6 +51,54 @@ function stopElapsedTimer() {
   if (loaderEl) loaderEl.classList.add('hidden');
 }
 
+function resetDecisionView() {
+  document.getElementById('resRegion').innerText = '—';
+  document.getElementById('resTier').innerText = '—';
+  document.getElementById('resCarbon').innerText = '—';
+  document.getElementById('resCost').innerText = '—';
+  document.getElementById('resExplanation').innerText = 'Evaluating workload constraints and candidate metrics...';
+  document.getElementById('resWeights').innerText = 'Weights: —';
+  document.getElementById('candidateRows').innerHTML = '<tr><td colspan="7" class="p-3 text-center text-slate-600">Evaluating candidates...</td></tr>';
+}
+
+function renderCandidateEvidence(opt, parsedSpec) {
+  const weights = parsedSpec?.objective_weights;
+  const weightsEl = document.getElementById('resWeights');
+  if (weightsEl && weights) {
+    weightsEl.innerText = `Weights: Cost ${weights.cost} · Carbon ${weights.carbon} · Reliability ${weights.reliability} · SLA ${weights.sla_buffer}`;
+  }
+
+  const tbody = document.getElementById('candidateRows');
+  if (!tbody) return;
+  const candidates = opt?.candidates || [];
+  if (candidates.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" class="p-3 text-center text-slate-600">No candidates were generated.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = '';
+  candidates.forEach((candidate) => {
+    const isSelected = opt.selected_candidate?.candidate_id === candidate.candidate_id;
+    const result = isSelected
+      ? '<span class="text-emerald-400">SELECTED</span>'
+      : candidate.is_feasible
+        ? '<span class="text-blue-300">FEASIBLE</span>'
+        : `<span class="text-rose-400" title="${(candidate.rejection_reasons || []).join('; ')}">REJECTED</span>`;
+    const row = document.createElement('tr');
+    row.className = isSelected ? 'bg-emerald-500/5' : '';
+    row.innerHTML = `
+      <td class="p-2.5 font-mono">${candidate.region}</td>
+      <td class="p-2.5">${candidate.machine_type} · ${candidate.provisioning_model}</td>
+      <td class="p-2.5 font-mono">$${Number(candidate.estimated_compute_cost_usd).toFixed(6)}</td>
+      <td class="p-2.5 font-mono">${Number(candidate.carbon_score).toFixed(1)}</td>
+      <td class="p-2.5 font-mono">${Number(candidate.reliability_score).toFixed(2)}</td>
+      <td class="p-2.5 font-mono">${candidate.final_score === null || candidate.final_score === undefined ? '—' : Number(candidate.final_score).toFixed(4)}</td>
+      <td class="p-2.5 font-semibold">${result}</td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
 async function runDispatch(dispatch) {
   const prompt = document.getElementById('promptInput').value;
   const badgeStatus = document.getElementById('badgeStatus');
@@ -60,6 +108,7 @@ async function runDispatch(dispatch) {
   
   clearInterval(pollInterval);
   stopElapsedTimer();
+  resetDecisionView();
 
   optBtn.disabled = true;
   dispBtn.disabled = true;
@@ -77,23 +126,30 @@ async function runDispatch(dispatch) {
     
     const data = await res.json();
     const opt = data.optimization_result;
+    if (opt) renderCandidateEvidence(opt, data.parsed_spec);
     
     if (opt && opt.selected_candidate) {
       const cand = opt.selected_candidate;
-      const costVal = cand.estimated_compute_cost_usd ?? cand.estimated_cost_usd ?? 0.0043;
-      const carbonVal = cand.carbon_score ?? cand.carbon_intensity ?? 170.0;
+      const costVal = cand.estimated_compute_cost_usd ?? cand.estimated_cost_usd;
+      const carbonVal = cand.carbon_score ?? cand.carbon_intensity;
       
-      let provModel = 'SPOT';
+      let provModel = '—';
       if (cand.provisioning_model) {
         provModel = typeof cand.provisioning_model === 'object' 
-          ? (cand.provisioning_model.value || 'SPOT') 
+          ? (cand.provisioning_model.value || '—')
           : cand.provisioning_model;
       }
 
-      document.getElementById('resRegion').innerText = cand.region || 'europe-west1';
-      document.getElementById('resTier').innerText = `${cand.machine_type || 'n2-standard-4'} (${provModel})`;
-      document.getElementById('resCarbon').innerText = `${Number(carbonVal).toFixed(1)} gCO2e`;
-      document.getElementById('resCost').innerText = `$${Number(costVal).toFixed(4)}`;
+      document.getElementById('resRegion').innerText = cand.region || '—';
+      document.getElementById('resTier').innerText = cand.machine_type
+        ? `${cand.machine_type} (${provModel})`
+        : '—';
+      document.getElementById('resCarbon').innerText = carbonVal === null || carbonVal === undefined
+        ? '—'
+        : `${Number(carbonVal).toFixed(1)} gCO2e/kWh`;
+      document.getElementById('resCost').innerText = costVal === null || costVal === undefined
+        ? '—'
+        : `$${Number(costVal).toFixed(6)}`;
       
       const explanation = data.gemini_explanation || opt.message || "Optimal carbon-aware candidate selected.";
       document.getElementById('resExplanation').innerText = explanation;
@@ -102,6 +158,10 @@ async function runDispatch(dispatch) {
         badgeStatus.className = "px-2.5 py-0.5 text-xs font-semibold rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30";
         badgeStatus.innerText = 'OPTIMIZATION COMPLETE';
       }
+    } else if (opt && !opt.selected_candidate) {
+      badgeStatus.className = "px-2.5 py-0.5 text-xs font-semibold rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/30";
+      badgeStatus.innerText = 'NO FEASIBLE PLAN';
+      document.getElementById('resExplanation').innerText = opt.message || 'No candidate satisfies all hard constraints.';
     }
 
     if (data.workflow_execution) {

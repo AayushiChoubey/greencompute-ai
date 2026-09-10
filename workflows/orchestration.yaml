@@ -29,6 +29,20 @@ main:
           - est_minutes: ${default(workload.estimated_runtime_minutes, 60)}
           - hourly_rate: ${selected.estimated_compute_cost_usd * (60.0 / est_minutes)}
 
+    # Honor the optimizer's temporal placement. Past/current timestamps proceed
+    # immediately; future exact or flexible starts suspend without consuming CPU.
+    - checkScheduledStart:
+        switch:
+          - condition: ${time.parse(selected.scheduled_start_at) > sys.now()}
+            next: waitForScheduledStart
+        next: dispatchExecution
+
+    - waitForScheduledStart:
+        call: sys.sleep_until
+        args:
+          time: ${selected.scheduled_start_at}
+        next: dispatchExecution
+
     # 2. Dispatch the chosen plan to Google Cloud Batch
     - dispatchExecution:
         call: http.post
@@ -36,7 +50,7 @@ main:
           url: ${api_base_url + "/api/v1/execute"}
           body:
             workload_id: ${workload.workload_id}
-            decision_id: ${selected.candidate_id}
+            decision_id: ${opt_response.body.decision_id}
             optimization_run_id: ${opt_run_id}
             selected_candidate: ${selected}
         result: exec_response
@@ -54,7 +68,7 @@ main:
           url: ${api_base_url + "/api/v1/execution-workflow-link"}
           body:
             workload_id: ${workload.workload_id}
-            decision_id: ${selected.candidate_id}
+            decision_id: ${opt_response.body.decision_id}
             execution_attempt_id: ${exec_attempt_id}
             batch_job_name: ${batch_job_name}
             region: ${selected_region}
@@ -116,7 +130,7 @@ main:
             url: ${api_base_url + "/api/v1/execution-callback"}
             body:
               workload_id: ${workload.workload_id}
-              decision_id: ${selected.candidate_id}
+              decision_id: ${opt_response.body.decision_id}
               execution_attempt_id: ${exec_attempt_id}
               batch_job_name: ${batch_job_name}
               region: ${selected_region}

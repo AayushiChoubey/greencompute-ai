@@ -1,5 +1,11 @@
 from datetime import datetime, timezone, timedelta
-from app.models import OptimizeRequest, RegionMetric, ProvisioningModel, DataLocationType
+from app.models import (
+    DataLocationType,
+    ObjectiveWeights,
+    OptimizeRequest,
+    ProvisioningModel,
+    RegionMetric,
+)
 from app.optimizer import optimize
 
 def sample_metrics():
@@ -61,3 +67,99 @@ def test_spot_rejected_if_not_checkpointable():
     )
     resp, _ = optimize(req, sample_metrics())
     assert resp.feasible_candidate_count == 0
+
+
+def weighted_metrics():
+    return [
+        RegionMetric(
+            region="asia-south1",
+            machine_type="n2-standard-4",
+            provisioning_model=ProvisioningModel.STANDARD,
+            vcpus=4,
+            memory_gb=16,
+            hourly_cost_usd=0.10,
+            carbon_score=650.0,
+            reliability_score=0.90,
+        ),
+        RegionMetric(
+            region="europe-west1",
+            machine_type="n2-standard-4",
+            provisioning_model=ProvisioningModel.STANDARD,
+            vcpus=4,
+            memory_gb=16,
+            hourly_cost_usd=0.20,
+            carbon_score=170.0,
+            reliability_score=0.99,
+        ),
+    ]
+
+
+def weighted_request(weights: ObjectiveWeights) -> OptimizeRequest:
+    now = datetime.now(timezone.utc)
+    return OptimizeRequest(
+        workload_name="weighted_scoring_test",
+        data_location_type=DataLocationType.PORTABLE,
+        allowed_regions=["asia-south1", "europe-west1"],
+        required_vcpus=4,
+        required_memory_gb=16,
+        estimated_runtime_minutes=60,
+        earliest_start_at=now,
+        deadline_at=now + timedelta(hours=2),
+        spot_allowed=False,
+        checkpointable=False,
+        minimum_reliability_score=0.80,
+        objective_weights=weights,
+    )
+
+
+def test_cost_weight_selects_cheapest_region():
+    request = weighted_request(
+        ObjectiveWeights(cost=1.0, carbon=0.0, reliability=0.0, sla_buffer=0.0)
+    )
+
+    response, _ = optimize(request, weighted_metrics())
+
+    assert response.selected_candidate is not None
+    assert response.selected_candidate.region == "asia-south1"
+    assert response.selected_candidate.final_score == 1.0
+
+
+def test_carbon_weight_selects_lower_carbon_region():
+    request = weighted_request(
+        ObjectiveWeights(cost=0.0, carbon=1.0, reliability=0.0, sla_buffer=0.0)
+    )
+
+    response, _ = optimize(request, weighted_metrics())
+
+    assert response.selected_candidate is not None
+    assert response.selected_candidate.region == "europe-west1"
+    assert response.selected_candidate.final_score == 1.0
+
+
+def test_cost_premium_guardrail_overrides_carbon_preference():
+    request = weighted_request(
+        ObjectiveWeights(cost=0.0, carbon=1.0, reliability=0.0, sla_buffer=0.0)
+    )
+    request.maximum_cost_increase_percent = 5.0
+
+    response, _ = optimize(request, weighted_metrics())
+
+    assert response.selected_candidate is not None
+    assert response.selected_candidate.region == "asia-south1"
+    europe_candidate = next(
+        candidate for candidate in response.candidates
+        if candidate.region == "europe-west1"
+    )
+    assert europe_candidate.is_feasible is False
+    assert any(
+        reason.startswith("COST_INCREASE_ABOVE_POLICY_THRESHOLD")
+        for reason in europe_candidate.rejection_reasons
+    )
+
+
+def test_optimizer_returns_traceable_decision_id():
+    request = weighted_request(ObjectiveWeights())
+
+    response, _ = optimize(request, weighted_metrics())
+
+    assert response.decision_id.startswith("dec_")

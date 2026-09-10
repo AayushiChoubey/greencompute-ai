@@ -67,6 +67,7 @@ class OptimizeRequest(BaseModel):
     checkpointable: bool = False
     minimum_reliability_score: float = Field(default=0.85, ge=0, le=1)
     minimum_sla_buffer_minutes: int = Field(default=30, ge=0)
+    maximum_cost_increase_percent: Optional[float] = Field(default=None, ge=0)
     objective_weights: ObjectiveWeights = Field(default_factory=ObjectiveWeights)
     region_metrics: List[RegionMetric] = Field(default_factory=list)
 
@@ -97,6 +98,7 @@ class Candidate(BaseModel):
 
 class OptimizeResponse(BaseModel):
     optimization_run_id: str
+    decision_id: str
     workload_name: str
     start_mode: StartMode
     candidate_count: int

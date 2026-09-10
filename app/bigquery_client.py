@@ -45,6 +45,7 @@ class BigQueryClient:
     def record_full_optimization_run(
         self,
         optimization_run_id: str,
+        decision_id: str,
         workload_id: str,
         policy_version_id: str,
         selected_candidate: Optional[Candidate],
@@ -53,7 +54,6 @@ class BigQueryClient:
         workload_input_dict: dict,
     ):
         now_iso = datetime.now(timezone.utc).isoformat()
-        decision_id = f"dec_{uuid.uuid4().hex[:12]}"
         org_id = "org-retail-demo"
         workload_def_ver_id = f"wdv_{workload_id}_v1"
 
@@ -65,9 +65,11 @@ class BigQueryClient:
             "workload_definition_version_id": workload_def_ver_id,
             "policy_version_id": policy_version_id,
             "correlation_id": optimization_run_id,
-            "optimizer_version": "optimizer-mvp-v1",
+            "optimizer_version": "optimizer-mvp-v2-weighted",
             "optimization_status": "COMPLETED" if selected_candidate else "FAILED",
-            "objective_configuration": json.dumps({"primary": "COST", "tie_breaker": "CARBON"}),
+            "objective_configuration": json.dumps(
+                workload_input_dict.get("objective_weights", {})
+            ),
             "metric_snapshot_references": ["v_current_compute_options_snapshot"],
             "started_at": now_iso,
             "completed_at": now_iso,
@@ -76,32 +78,78 @@ class BigQueryClient:
             "ingested_at": now_iso,
         }]
 
-        # 2. Optimization Decision Record
-        decision_rows = [{
-            "decision_id": decision_id,
-            "optimization_run_id": optimization_run_id,
-            "candidate_evaluation_id": selected_candidate.candidate_id if selected_candidate else "none",
-            "organization_id": org_id,
-            "workload_run_id": workload_id,
-            "decision_type": "SELECTED" if selected_candidate else "INFEASIBLE",
-            "is_selected": True if selected_candidate else False,
-            "selection_rank": 1,
-            "decision_reason": reason,
-            "decision_explanation": json.dumps({
-                "selection_reason": reason,
-                "total_candidates": len(all_candidates),
-                "feasible_candidates": sum(1 for c in all_candidates if c.is_feasible),
-            }),
-            "fallback_candidate_evaluation_id": None,
-            "estimated_total_cost": float(selected_candidate.estimated_compute_cost_usd) if selected_candidate else 0.0,
-            "currency_code": "USD",
-            "carbon_score": float(selected_candidate.carbon_score) if selected_candidate else 0.0,
-            "reliability_score": float(selected_candidate.reliability_score) if selected_candidate else 0.0,
-            "sla_buffer_seconds": int(selected_candidate.sla_buffer_minutes * 60) if selected_candidate else 0,
-            "decision_timestamp": now_iso,
-            "schema_version": 1,
-            "ingested_at": now_iso,
-        }]
+        # 2. Selected decision and explainable alternatives
+        feasible_candidates = [c for c in all_candidates if c.is_feasible]
+        decision_roles = []
+        if selected_candidate:
+            decision_roles.append(("SELECTED", selected_candidate, True, decision_id))
+            decision_roles.extend([
+                (
+                    "CHEAPEST",
+                    min(feasible_candidates, key=lambda c: c.estimated_compute_cost_usd),
+                    False,
+                    f"dec_{uuid.uuid4().hex[:12]}",
+                ),
+                (
+                    "GREENEST",
+                    min(feasible_candidates, key=lambda c: c.carbon_score),
+                    False,
+                    f"dec_{uuid.uuid4().hex[:12]}",
+                ),
+                (
+                    "SAFEST",
+                    max(feasible_candidates, key=lambda c: c.reliability_score),
+                    False,
+                    f"dec_{uuid.uuid4().hex[:12]}",
+                ),
+            ])
+        else:
+            decision_roles.append(("INFEASIBLE", None, False, decision_id))
+
+        safest_candidate = (
+            max(feasible_candidates, key=lambda c: c.reliability_score)
+            if feasible_candidates
+            else None
+        )
+        decision_rows = []
+        for selection_rank, (decision_type, candidate, is_selected, row_decision_id) in enumerate(
+            decision_roles, start=1
+        ):
+            decision_rows.append({
+                "decision_id": row_decision_id,
+                "optimization_run_id": optimization_run_id,
+                "candidate_evaluation_id": candidate.candidate_id if candidate else "none",
+                "organization_id": org_id,
+                "workload_run_id": workload_id,
+                "decision_type": decision_type,
+                "is_selected": is_selected,
+                "selection_rank": selection_rank,
+                "decision_reason": (
+                    reason
+                    if is_selected or not candidate
+                    else f"Retained {decision_type.lower()} feasible alternative."
+                ),
+                "decision_explanation": json.dumps({
+                    "selection_reason": reason,
+                    "role": decision_type,
+                    "final_score": candidate.final_score if candidate else None,
+                    "total_candidates": len(all_candidates),
+                    "feasible_candidates": len(feasible_candidates),
+                }),
+                "fallback_candidate_evaluation_id": (
+                    safest_candidate.candidate_id if safest_candidate else None
+                ),
+                "estimated_total_cost": (
+                    float(candidate.estimated_compute_cost_usd) if candidate else 0.0
+                ),
+                "currency_code": "USD",
+                "carbon_score": float(candidate.carbon_score) if candidate else 0.0,
+                "reliability_score": float(candidate.reliability_score) if candidate else 0.0,
+                "sla_buffer_seconds": int(candidate.sla_buffer_minutes * 60) if candidate else 0,
+                "decision_timestamp": now_iso,
+                "schema_version": 1,
+                "ingested_at": now_iso,
+            })
 
         # 3. Candidate & Policy Evaluations
         candidate_rows = []
@@ -129,6 +177,7 @@ class BigQueryClient:
                 "is_feasible": c.is_feasible,
                 "rejection_reasons": c.rejection_reasons,
                 "pareto_rank": None,
+                "final_score": c.final_score,
                 "candidate_rank": rank_idx if c.is_feasible else None,
                 "metric_snapshot": None,
                 "evaluated_at": now_iso,
@@ -186,10 +235,13 @@ class BigQueryClient:
         """Estimates workload runtime in minutes using execution history, falling back to optimization history."""
         slug = workload_name.split()[0].lower() if workload_name else "sim"
 
-        # 1. Check actual executed runtimes from v_execution_summary
+        # 1. Use a conservative p90 of successful observed runtimes.
         exec_query = """
         SELECT 
-          CAST(CEIL(AVG(actual_runtime_seconds) / 60.0) AS INT64) AS avg_runtime_minutes
+          CAST(
+            CEIL(APPROX_QUANTILES(actual_runtime_seconds, 100)[OFFSET(90)] / 60.0)
+            AS INT64
+          ) AS p90_runtime_minutes
         FROM `greencompute-ai.greencompute_analytics.v_execution_summary`
         WHERE execution_status = 'SUCCEEDED'
           AND actual_runtime_seconds IS NOT NULL
@@ -201,8 +253,8 @@ class BigQueryClient:
         )
         try:
             results = list(self.client.query(exec_query, job_config=job_config).result())
-            if results and results[0].avg_runtime_minutes and results[0].avg_runtime_minutes > 0:
-                return max(int(results[0].avg_runtime_minutes), 5)
+            if results and results[0].p90_runtime_minutes and results[0].p90_runtime_minutes > 0:
+                return max(int(results[0].p90_runtime_minutes), 5)
         except Exception as e:
             print(f"Execution history lookup notice: {e}")
 

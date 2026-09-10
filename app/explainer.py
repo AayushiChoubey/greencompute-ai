@@ -54,13 +54,20 @@ Selected Winner:
 - Carbon Score (Grid Intensity): {selected_candidate.carbon_score} gCO2e/kWh
 - Reliability Score: {selected_candidate.reliability_score}
 - SLA Buffer: {selected_candidate.sla_buffer_minutes} minutes
+- Weighted Score: {selected_candidate.final_score}
+
+Objective Weights:
+- Cost: {request.objective_weights.cost}
+- Carbon: {request.objective_weights.carbon}
+- Reliability: {request.objective_weights.reliability}
+- SLA Buffer: {request.objective_weights.sla_buffer}
 
 Top Competitors & Alternatives:
 {chr(10).join(alt_summary)}
 
 Instructions:
 1. Explain in 3-4 bullet points:
-   - Why this specific region and provisioning model won on cost and carbon efficiency.
+   - Why this specific region and provisioning model won under the configured objective weights.
    - Why it was legally permissible (referencing data portability and checkpointability).
    - How much cost or carbon was saved compared to running on the home region baseline.
 2. Maintain a concise, professional cloud architecture tone.

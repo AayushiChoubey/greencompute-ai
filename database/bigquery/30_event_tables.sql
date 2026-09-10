@@ -71,6 +71,7 @@ CREATE TABLE IF NOT EXISTS `greencompute_events.candidate_evaluations` (
   is_feasible BOOL NOT NULL,
   rejection_reasons ARRAY<STRING>,
   pareto_rank INT64,
+  final_score NUMERIC,
   candidate_rank INT64,
   metric_snapshot JSON,
 

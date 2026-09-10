@@ -53,6 +53,7 @@ def optimize_workload(request: OptimizeRequest) -> OptimizeResponse:
     try:
         bq_client.record_full_optimization_run(
             optimization_run_id=response.optimization_run_id,
+            decision_id=response.decision_id,
             workload_id=request.workload_id,
             policy_version_id=request.policy_version_id,
             selected_candidate=response.selected_candidate,
@@ -117,6 +118,11 @@ def ingest_workload_prompt(
 
     wf_result = None
     if dispatch:
+        if not opt_result or not opt_result.selected_candidate:
+            raise HTTPException(
+                status_code=422,
+                detail="No feasible execution plan satisfies the workload constraints; dispatch was prevented.",
+            )
         try:
             workload_dict = parsed_spec.model_dump(mode="json")
             wf_result = workflow_adapter.trigger_workflow(workload_dict)

@@ -15,6 +15,54 @@ from app.models import (
 )
 
 
+def _lower_is_better(value: float, values: List[float]) -> float:
+    """Normalize a minimization metric to a 0..1 benefit score."""
+    low, high = min(values), max(values)
+    return 1.0 if high == low else (high - value) / (high - low)
+
+
+def _higher_is_better(value: float, values: List[float]) -> float:
+    """Normalize a maximization metric to a 0..1 benefit score."""
+    low, high = min(values), max(values)
+    return 1.0 if high == low else (value - low) / (high - low)
+
+
+def _score_feasible_candidates(request: OptimizeRequest, candidates: List[Candidate]) -> None:
+    """Apply the user-supplied multi-objective weights to feasible candidates."""
+    costs = [c.estimated_compute_cost_usd for c in candidates]
+    carbons = [c.carbon_score for c in candidates]
+    reliabilities = [c.reliability_score for c in candidates]
+    sla_buffers = [float(c.sla_buffer_minutes) for c in candidates]
+    weights = request.objective_weights
+
+    for candidate in candidates:
+        candidate.final_score = round(
+            weights.cost * _lower_is_better(candidate.estimated_compute_cost_usd, costs)
+            + weights.carbon * _lower_is_better(candidate.carbon_score, carbons)
+            + weights.reliability * _higher_is_better(candidate.reliability_score, reliabilities)
+            + weights.sla_buffer * _higher_is_better(float(candidate.sla_buffer_minutes), sla_buffers),
+            6,
+        )
+
+
+def _apply_cost_increase_guardrail(
+    request: OptimizeRequest, candidates: List[Candidate]
+) -> None:
+    """Reject options exceeding the permitted premium over the cheapest valid plan."""
+    if request.maximum_cost_increase_percent is None or not candidates:
+        return
+
+    cheapest_cost = min(c.estimated_compute_cost_usd for c in candidates)
+    maximum_cost = cheapest_cost * (1 + request.maximum_cost_increase_percent / 100.0)
+    for candidate in candidates:
+        if candidate.estimated_compute_cost_usd > maximum_cost:
+            candidate.is_feasible = False
+            candidate.rejection_reasons.append(
+                "COST_INCREASE_ABOVE_POLICY_THRESHOLD: "
+                f"${candidate.estimated_compute_cost_usd:.6f} exceeds ${maximum_cost:.6f}"
+            )
+
+
 def _possible_start_times(request: OptimizeRequest):
     if request.start_mode == StartMode.EXACT:
         return [request.earliest_start_at]
@@ -80,7 +128,12 @@ def _evaluate_candidate(
         provisioning_model=metric.provisioning_model,
         scheduled_start_at=scheduled_start_at,
         predicted_finish_at=predicted_finish,
-        estimated_compute_cost_usd=round(metric.hourly_cost_usd * request.estimated_runtime_minutes / 60, 4),
+        # Preserve enough precision for short jobs; presentation formatting is
+        # a UI concern and must not change ranking outcomes.
+        estimated_compute_cost_usd=round(
+            metric.hourly_cost_usd * request.estimated_runtime_minutes / 60,
+            9,
+        ),
         carbon_score=metric.carbon_score,
         reliability_score=metric.reliability_score,
         sla_buffer_minutes=sla_buffer,
@@ -98,6 +151,10 @@ def optimize(request: OptimizeRequest, metrics: List[RegionMetric]) -> Tuple[Opt
     ]
     feasible = [c for c in candidates if c.is_feasible]
     opt_run_id = f"opt_{uuid4().hex[:12]}"
+    decision_id = f"dec_{uuid4().hex[:12]}"
+
+    _apply_cost_increase_guardrail(request, feasible)
+    feasible = [c for c in feasible if c.is_feasible]
 
     transparency = (
         "Carbon values are synthetic regional baselines (gCO2e/kWh) and do not represent "
@@ -108,6 +165,7 @@ def optimize(request: OptimizeRequest, metrics: List[RegionMetric]) -> Tuple[Opt
         msg = "No candidate meets all hard constraints. Execution prevented."
         return OptimizeResponse(
             optimization_run_id=opt_run_id,
+            decision_id=decision_id,
             workload_name=request.workload_name,
             start_mode=request.start_mode,
             candidate_count=len(candidates),
@@ -118,16 +176,32 @@ def optimize(request: OptimizeRequest, metrics: List[RegionMetric]) -> Tuple[Opt
             candidates=candidates,
         ), msg
 
-    # Rank by cost first, breaking ties with lowest carbon baseline
-    feasible.sort(key=lambda c: (c.estimated_compute_cost_usd, c.carbon_score))
+    _score_feasible_candidates(request, feasible)
+    feasible.sort(
+        key=lambda c: (
+            -(c.final_score or 0.0),
+            c.estimated_compute_cost_usd,
+            c.carbon_score,
+            -c.reliability_score,
+            -c.sla_buffer_minutes,
+        )
+    )
     selected = feasible[0]
+    weights = request.objective_weights
     reason = (
         f"Selected {selected.machine_type} ({selected.provisioning_model}) in {selected.region} "
-        f"at ${selected.estimated_compute_cost_usd:.4f} USD and carbon baseline {selected.carbon_score:.1f} gCO2e/kWh."
+        f"with weighted score {selected.final_score:.4f}, estimated compute cost "
+        f"${selected.estimated_compute_cost_usd:.6f} USD, and carbon baseline "
+        f"{selected.carbon_score:.1f} gCO2e/kWh. Weights: cost={weights.cost:.2f}, "
+        f"carbon={weights.carbon:.2f}, reliability={weights.reliability:.2f}, "
+        f"SLA buffer={weights.sla_buffer:.2f}."
     )
+
+    ranked_candidates = feasible + [c for c in candidates if not c.is_feasible]
 
     return OptimizeResponse(
         optimization_run_id=opt_run_id,
+        decision_id=decision_id,
         workload_name=request.workload_name,
         start_mode=request.start_mode,
         candidate_count=len(candidates),
@@ -135,5 +209,5 @@ def optimize(request: OptimizeRequest, metrics: List[RegionMetric]) -> Tuple[Opt
         selected_candidate=selected,
         message=reason,
         transparency_notice=transparency,
-        candidates=candidates,
+        candidates=ranked_candidates,
     ), reason
