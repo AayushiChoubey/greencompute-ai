@@ -4,6 +4,89 @@ let timerInterval = null;
 let telemetryPollInterval = null;
 let startTime = null;
 
+// Gemini explanations are Markdown-like text. Render the small safe subset we
+// ask Gemini to produce instead of injecting its response as HTML.
+function appendInlineMarkdown(target, value) {
+  const tokens = String(value).split(/(`[^`]*`|\*\*[^*]+\*\*|__[^_]+__)/g);
+  tokens.forEach((token) => {
+    if (!token) return;
+    if ((token.startsWith('**') && token.endsWith('**')) || (token.startsWith('__') && token.endsWith('__'))) {
+      const strong = document.createElement('strong');
+      strong.className = 'font-semibold text-slate-100';
+      strong.textContent = token.slice(2, -2);
+      target.appendChild(strong);
+      return;
+    }
+    if (token.startsWith('`') && token.endsWith('`')) {
+      const code = document.createElement('code');
+      code.className = 'rounded bg-slate-800 px-1 py-0.5 font-mono text-[0.92em] text-emerald-300';
+      code.textContent = token.slice(1, -1);
+      target.appendChild(code);
+      return;
+    }
+    target.appendChild(document.createTextNode(token));
+  });
+}
+
+function renderMarkdownExplanation(element, markdown) {
+  const lines = String(markdown || '').replace(/\r\n?/g, '\n').split('\n');
+  element.replaceChildren();
+  let list = null;
+  let paragraphLines = [];
+
+  const flushParagraph = () => {
+    if (!paragraphLines.length) return;
+    const paragraph = document.createElement('p');
+    paragraph.className = 'mb-3 last:mb-0';
+    appendInlineMarkdown(paragraph, paragraphLines.join(' '));
+    element.appendChild(paragraph);
+    paragraphLines = [];
+  };
+
+  lines.forEach((line) => {
+    const trimmed = line.trim();
+    const bullet = trimmed.match(/^[-*+]\s+(.+)$/);
+    const numbered = trimmed.match(/^\d+\.\s+(.+)$/);
+    const heading = trimmed.match(/^#{1,3}\s+(.+)$/);
+
+    if (bullet || numbered) {
+      flushParagraph();
+      const tagName = numbered ? 'ol' : 'ul';
+      if (!list || list.tagName.toLowerCase() !== tagName) {
+        list = document.createElement(tagName);
+        list.className = `${numbered ? 'list-decimal' : 'list-disc'} mb-3 space-y-1.5 pl-5 last:mb-0`;
+        element.appendChild(list);
+      }
+      const item = document.createElement('li');
+      appendInlineMarkdown(item, (bullet || numbered)[1]);
+      list.appendChild(item);
+      return;
+    }
+
+    if (heading) {
+      flushParagraph();
+      list = null;
+      const headingEl = document.createElement('p');
+      headingEl.className = 'mb-2 font-semibold text-slate-100';
+      appendInlineMarkdown(headingEl, heading[1]);
+      element.appendChild(headingEl);
+      return;
+    }
+
+    if (!trimmed) {
+      flushParagraph();
+      list = null;
+      return;
+    }
+
+    list = null;
+    paragraphLines.push(trimmed);
+  });
+
+  flushParagraph();
+  if (!element.childNodes.length) element.textContent = 'No explanation was returned.';
+}
+
 function workflowExecutionId(record) {
   if (record.workflow_execution_id) return record.workflow_execution_id;
   let details = record.event_details || {};
@@ -56,7 +139,10 @@ function resetDecisionView() {
   document.getElementById('resTier').innerText = '—';
   document.getElementById('resCarbon').innerText = '—';
   document.getElementById('resCost').innerText = '—';
-  document.getElementById('resExplanation').innerText = 'Evaluating workload constraints and candidate metrics...';
+  renderMarkdownExplanation(
+    document.getElementById('resExplanation'),
+    'Evaluating workload constraints and candidate metrics...'
+  );
   document.getElementById('resWeights').innerText = 'Weights: —';
   document.getElementById('candidateRows').innerHTML = '<tr><td colspan="9" class="p-3 text-center text-slate-600">Evaluating candidates...</td></tr>';
   const workflowBox = document.getElementById('workflowStatusBox');
@@ -176,7 +262,7 @@ async function runDispatch(dispatch) {
         : `$${Number(costVal).toFixed(6)}`;
       
       const explanation = data.gemini_explanation || opt.message || "Optimal carbon-aware candidate selected.";
-      document.getElementById('resExplanation').innerText = explanation;
+      renderMarkdownExplanation(document.getElementById('resExplanation'), explanation);
       
       if (!dispatch) {
         badgeStatus.className = "px-2.5 py-0.5 text-xs font-semibold rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30";
@@ -185,7 +271,10 @@ async function runDispatch(dispatch) {
     } else if (opt && !opt.selected_candidate) {
       badgeStatus.className = "px-2.5 py-0.5 text-xs font-semibold rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/30";
       badgeStatus.innerText = 'NO FEASIBLE PLAN';
-      document.getElementById('resExplanation').innerText = opt.message || 'No candidate satisfies all hard constraints.';
+      renderMarkdownExplanation(
+        document.getElementById('resExplanation'),
+        opt.message || 'No candidate satisfies all hard constraints.'
+      );
     }
 
     if (data.workflow_execution) {
