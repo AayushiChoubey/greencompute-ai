@@ -110,21 +110,22 @@ main:
 
     # 5. Send status callback to update BigQuery execution ledger
     - notifyCallback:
-        call: http.post
-        args:
-          url: ${api_base_url + "/api/v1/execution-callback"}
-          body:
-            workload_id: ${workload.workload_id}
-            decision_id: ${selected.candidate_id}
-            execution_attempt_id: ${exec_attempt_id}
-            batch_job_name: ${batch_job_name}
-            region: ${selected_region}
-            status: ${job_state}
-            actual_runtime_seconds: ${actual_seconds}
-            actual_cost: ${actual_cost}
-            correlation_id: ${opt_run_id}
-            workflow_execution_id: ${workflow_execution_id}
-        result: callback_result
+        try:
+          call: http.post
+          args:
+            url: ${api_base_url + "/api/v1/execution-callback"}
+            body:
+              workload_id: ${workload.workload_id}
+              decision_id: ${selected.candidate_id}
+              execution_attempt_id: ${exec_attempt_id}
+              batch_job_name: ${batch_job_name}
+              region: ${selected_region}
+              status: ${job_state}
+              actual_runtime_seconds: ${actual_seconds}
+              actual_cost: ${actual_cost}
+              correlation_id: ${opt_run_id}
+              workflow_execution_id: ${workflow_execution_id}
+          result: callback_result
         retry: ${http.default_retry}
 
     # 6. Generate Gemini explainability synthesis
