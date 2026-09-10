@@ -69,7 +69,8 @@ function formatUtcTimestamp(value) {
   if (!value) return '—';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toISOString().replace('T', ' ').replace(':00.000Z', 'Z');
+  const iso = date.toISOString();
+  return `${iso.slice(0, 10)} ${iso.slice(11, 16)}Z`;
 }
 
 function renderCandidateEvidence(opt, parsedSpec) {
@@ -98,15 +99,18 @@ function renderCandidateEvidence(opt, parsedSpec) {
     const row = document.createElement('tr');
     row.className = isSelected ? 'bg-emerald-500/5' : '';
     row.innerHTML = `
-      <td class="p-2.5 font-mono">${candidate.region}</td>
-      <td class="p-2.5">${candidate.machine_type} · ${candidate.provisioning_model}</td>
-      <td class="p-2.5 font-mono whitespace-nowrap">${formatUtcTimestamp(candidate.scheduled_start_at)}</td>
-      <td class="p-2.5 font-mono">$${Number(candidate.estimated_compute_cost_usd).toFixed(6)}</td>
-      <td class="p-2.5 font-mono">${Number(candidate.carbon_score).toFixed(1)}</td>
-      <td class="p-2.5 font-mono">${Number(candidate.reliability_score).toFixed(2)}</td>
-      <td class="p-2.5 font-mono">${candidate.sla_buffer_minutes}m</td>
-      <td class="p-2.5 font-mono">${candidate.final_score === null || candidate.final_score === undefined ? '—' : Number(candidate.final_score).toFixed(4)}</td>
-      <td class="p-2.5 font-semibold">${result}</td>
+      <td class="px-1.5 py-2 font-mono break-words">${candidate.region}</td>
+      <td class="px-1.5 py-2 leading-tight">
+        <span class="block break-words">${candidate.machine_type}</span>
+        <span class="block text-slate-500">${candidate.provisioning_model}</span>
+      </td>
+      <td class="px-1.5 py-2 font-mono whitespace-nowrap" title="${candidate.scheduled_start_at}">${formatUtcTimestamp(candidate.scheduled_start_at)}</td>
+      <td class="px-1.5 py-2 font-mono">$${Number(candidate.estimated_compute_cost_usd).toFixed(6)}</td>
+      <td class="px-1.5 py-2 font-mono">${Number(candidate.carbon_score).toFixed(1)}</td>
+      <td class="px-1.5 py-2 font-mono">${Number(candidate.reliability_score).toFixed(2)}</td>
+      <td class="px-1.5 py-2 font-mono">${candidate.sla_buffer_minutes}m</td>
+      <td class="px-1.5 py-2 font-mono">${candidate.final_score === null || candidate.final_score === undefined ? '—' : Number(candidate.final_score).toFixed(4)}</td>
+      <td class="px-1.5 py-2 font-semibold">${result}</td>
     `;
     tbody.appendChild(row);
   });

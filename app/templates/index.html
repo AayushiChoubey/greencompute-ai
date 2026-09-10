@@ -82,18 +82,29 @@
               <span id="resWeights" class="text-[10px] font-mono text-slate-500">Weights: —</span>
             </div>
             <div class="overflow-x-auto rounded-lg border border-slate-800">
-              <table class="w-full min-w-[1120px] text-left text-[11px] text-slate-300">
-                <thead class="bg-slate-950 text-slate-500 uppercase text-[9px]">
+              <table class="w-full min-w-[680px] table-fixed text-left text-[9px] text-slate-300">
+                <colgroup>
+                  <col style="width: 12%">
+                  <col style="width: 18%">
+                  <col style="width: 17%">
+                  <col style="width: 11%">
+                  <col style="width: 9%">
+                  <col style="width: 9%">
+                  <col style="width: 9%">
+                  <col style="width: 7%">
+                  <col style="width: 8%">
+                </colgroup>
+                <thead class="bg-slate-950 text-slate-500 uppercase text-[8px]">
                   <tr>
-                    <th class="p-2.5">Region</th>
-                    <th class="p-2.5">Configuration</th>
-                    <th class="p-2.5">Start (UTC)</th>
-                    <th class="p-2.5">Cost</th>
-                    <th class="p-2.5">Carbon</th>
-                    <th class="p-2.5">Reliability</th>
-                    <th class="p-2.5">SLA Buffer</th>
-                    <th class="p-2.5">Score</th>
-                    <th class="p-2.5">Result</th>
+                    <th class="px-1.5 py-2">Region</th>
+                    <th class="px-1.5 py-2">Configuration</th>
+                    <th class="px-1.5 py-2">Start UTC</th>
+                    <th class="px-1.5 py-2">Cost</th>
+                    <th class="px-1.5 py-2">Carbon</th>
+                    <th class="px-1.5 py-2">Reliab.</th>
+                    <th class="px-1.5 py-2">SLA</th>
+                    <th class="px-1.5 py-2">Score</th>
+                    <th class="px-1.5 py-2">Result</th>
                   </tr>
                 </thead>
                 <tbody id="candidateRows" class="divide-y divide-slate-800">
