@@ -1,9 +1,13 @@
 # GreenCompute AI — Project and Implementation Guide
 
-**Document status:** Current implementation reference  
-**Last verified against repository:** 10 September 2026  
-**Application version:** `0.5.0`  
-**Primary Google Cloud project:** `greencompute-ai`  
+**Document status:** Current implementation reference
+
+**Last verified against repository:** 10 September 2026
+
+**Application version:** `0.5.0`
+
+**Primary Google Cloud project:** `greencompute-ai`
+
 **Primary deployment region:** `asia-south1`
 
 ---
