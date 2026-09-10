@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import uuid
+from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 from google.cloud import batch_v1
@@ -12,6 +13,17 @@ from app.models import Candidate, ProvisioningModel
 
 PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT", "greencompute-ai")
 logger = logging.getLogger(__name__)
+NUMERIC_SCALE = Decimal("0.000000001")
+
+
+def to_bigquery_numeric(value: Any) -> Optional[str]:
+    """Return a BigQuery NUMERIC-safe decimal string (maximum 9 decimal places)."""
+    if value is None:
+        return None
+    return format(
+        Decimal(str(value)).quantize(NUMERIC_SCALE, rounding=ROUND_HALF_UP),
+        "f",
+    )
 
 
 class CloudBatchAdapter:
@@ -112,7 +124,9 @@ class CloudBatchAdapter:
             "event_timestamp": now_iso,
             "region": region,
             "actual_runtime_seconds": (details or {}).get("actual_runtime_seconds"),
-            "actual_cost": (details or {}).get("actual_cost"),
+            # Workflows calculates cost as a floating point value. BigQuery
+            # NUMERIC rejects its binary tail beyond 9 fractional digits.
+            "actual_cost": to_bigquery_numeric((details or {}).get("actual_cost")),
             "currency_code": "USD",
             "retryable": True,
             "error_code": None,
