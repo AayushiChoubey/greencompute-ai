@@ -4,6 +4,23 @@ let timerInterval = null;
 let telemetryPollInterval = null;
 let startTime = null;
 
+function workflowExecutionId(record) {
+  let details = record.event_details || {};
+  if (typeof details === 'string') {
+    try {
+      details = JSON.parse(details);
+    } catch (_) {
+      return '';
+    }
+  }
+  return details.workflow_execution_id || '';
+}
+
+function workflowLogsUrl(executionId) {
+  const query = `resource.type="workflows.googleapis.com/Workflow" AND "${executionId}"`;
+  return `https://console.cloud.google.com/logs/query;query=${encodeURIComponent(query)}?project=greencompute-ai`;
+}
+
 function startElapsedTimer() {
   clearInterval(timerInterval);
   startTime = Date.now();
@@ -144,16 +161,19 @@ async function runDispatch(dispatch) {
 }
 
 async function fetchTelemetry() {
+  const tbody = document.getElementById('telemetryRows');
   try {
     const res = await fetch('/api/v1/telemetry');
     const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.detail || 'Telemetry is unavailable.');
+    }
     telemetryData = data || [];
-    const tbody = document.getElementById('telemetryRows');
     if (!tbody) return;
     tbody.innerHTML = '';
     
     if (!data || data.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-slate-500">No telemetry events recorded yet.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" class="p-4 text-center text-slate-500">No telemetry events recorded yet.</td></tr>';
       return;
     }
 
@@ -172,6 +192,11 @@ async function fetchTelemetry() {
       if (r.actual_runtime_seconds !== null && r.actual_runtime_seconds !== undefined && r.actual_runtime_seconds !== '') {
         runtimeVal = `${r.actual_runtime_seconds}s`;
       }
+      const executionId = workflowExecutionId(r);
+      const workflowControls = executionId
+        ? `<button onclick="showWorkflowDetails(${idx})" class="px-2 py-0.5 rounded text-[10px] bg-violet-500/10 hover:bg-violet-500/20 text-violet-300 font-mono border border-violet-500/30 transition">Workflow</button>
+           <a href="${workflowLogsUrl(executionId)}" target="_blank" rel="noopener" class="ml-1 text-[10px] text-teal-400 hover:text-teal-300">Logs ↗</a>`
+        : '<span class="text-slate-500">—</span>';
       
       tr.innerHTML = `
         <td class="p-2.5 font-mono text-slate-200">${workloadName}</td>
@@ -183,6 +208,7 @@ async function fetchTelemetry() {
         </td>
         <td class="p-2.5 font-mono">${runtimeVal}</td>
         <td class="p-2.5 font-mono">${costVal}</td>
+        <td class="p-2.5 whitespace-nowrap">${workflowControls}</td>
         <td class="p-2.5 text-right">
           <button onclick="showJson(${idx})" class="px-2 py-0.5 rounded text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono border border-slate-700 transition">
             { } JSON
@@ -193,14 +219,37 @@ async function fetchTelemetry() {
     });
   } catch (e) {
     console.error("Failed to load telemetry:", e);
+    if (tbody) {
+      tbody.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-rose-400">${e.message}</td></tr>`;
+    }
   }
 }
 
 function showJson(index) {
-  const data = telemetryData[index];
+  showDetailModal('Execution Event Telemetry Record', telemetryData[index]);
+}
+
+async function showWorkflowDetails(index) {
+  const executionId = workflowExecutionId(telemetryData[index]);
+  if (!executionId) return;
+
+  showDetailModal('Workflow Execution Details', { state: 'Loading...', execution_id: executionId });
+  try {
+    const response = await fetch(`/api/v1/workflows/status/${encodeURIComponent(executionId)}`);
+    const details = await response.json();
+    if (!response.ok) throw new Error(details.detail || 'Workflow details are unavailable.');
+    showDetailModal('Workflow Execution Details', details);
+  } catch (error) {
+    showDetailModal('Workflow Execution Details', { execution_id: executionId, error: error.message });
+  }
+}
+
+function showDetailModal(title, data) {
   const modalEl = document.getElementById('jsonModal');
   const contentEl = document.getElementById('jsonContent');
+  const titleEl = document.getElementById('detailModalTitle');
   if (contentEl && modalEl) {
+    if (titleEl) titleEl.innerText = title;
     contentEl.innerText = JSON.stringify(data, null, 2);
     modalEl.classList.remove('hidden');
   }

@@ -1,12 +1,24 @@
+import logging
 import uuid
 from typing import Optional
 from fastapi import APIRouter, HTTPException
+from google.cloud import bigquery
 from pydantic import BaseModel
 
 from app.models import Candidate
-from app.dependencies import batch_adapter
+from app.dependencies import batch_adapter, bq_client
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+TERMINAL_STATUS_MAP = {
+    "SUCCEEDED": "SUCCEEDED",
+    "FAILED": "FAILED",
+    "CANCELLED": "CANCELLED",
+    # Batch uses this state when a job has been deleted before completion.
+    # Record it as a failed attempt; it must never be represented as success.
+    "DELETION_IN_PROGRESS": "FAILED",
+}
 
 
 class ExecuteRequest(BaseModel):
@@ -33,9 +45,10 @@ class ExecutionCallbackRequest(BaseModel):
     batch_job_name: str
     region: str
     status: str
-    actual_runtime_seconds: Optional[int] = 45
-    actual_cost: Optional[float] = 0.0006
+    actual_runtime_seconds: Optional[int] = None
+    actual_cost: Optional[float] = None
     correlation_id: Optional[str] = ""
+    workflow_execution_id: Optional[str] = None
 
 
 @router.post("/execute", response_model=ExecuteResponse)
@@ -82,23 +95,75 @@ def execute_decision(request: ExecuteRequest) -> ExecuteResponse:
 
 @router.post("/execution-callback")
 def execution_callback(request: ExecutionCallbackRequest):
-    final_attempt_id = request.execution_attempt_id or f"exec_att_{uuid.uuid4().hex[:12]}"
-    clean_status = request.status.upper()
-    if clean_status in ["DELETION_IN_PROGRESS", "RUNNING", "SCHEDULED"]:
-        clean_status = "SUCCEEDED"
+    received_status = request.status.upper()
+    clean_status = TERMINAL_STATUS_MAP.get(received_status)
+    if clean_status is None:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Execution callback accepts only terminal Batch states: "
+                "SUCCEEDED, FAILED, CANCELLED, or DELETION_IN_PROGRESS."
+            ),
+        )
 
-    batch_adapter.record_execution_event(
-        workload_id=request.workload_id,
-        decision_id=request.decision_id or "dec_default",
-        execution_attempt_id=final_attempt_id,
-        batch_job_id=request.batch_job_name,
-        region=request.region,
-        event_type=f"BATCH_{clean_status}",
-        status=clean_status,
-        correlation_id=request.correlation_id or "",
-        details={
-            "actual_runtime_seconds": request.actual_runtime_seconds,
-            "actual_cost": request.actual_cost,
-        }
-    )
+    final_attempt_id = request.execution_attempt_id
+    if not final_attempt_id:
+        # A retrying Workflow can lose a response value. Recover the submission
+        # attempt rather than creating an unrelated telemetry chain.
+        lookup_query = """
+            SELECT execution_attempt_id
+            FROM `greencompute-ai.greencompute_events.execution_events`
+            WHERE workload_run_id = @workload_id
+              AND batch_job_id = @batch_job_id
+              AND execution_status = 'SUBMITTED'
+            ORDER BY event_timestamp DESC, ingested_at DESC
+            LIMIT 1
+        """
+        try:
+            config = bigquery.QueryJobConfig(
+                query_parameters=[
+                    bigquery.ScalarQueryParameter("workload_id", "STRING", request.workload_id),
+                    bigquery.ScalarQueryParameter("batch_job_id", "STRING", request.batch_job_name),
+                ]
+            )
+            row = next(iter(bq_client.client.query(lookup_query, job_config=config).result()), None)
+            if row:
+                final_attempt_id = row["execution_attempt_id"]
+        except Exception:
+            logger.exception(
+                "Could not recover execution attempt id for Batch job %s",
+                request.batch_job_name,
+            )
+
+    if not final_attempt_id:
+        final_attempt_id = f"exec_att_{uuid.uuid4().hex[:12]}"
+        logger.warning(
+            "Recording terminal callback without a matching submission attempt for Batch job %s",
+            request.batch_job_name,
+        )
+
+    try:
+        batch_adapter.record_execution_event(
+            workload_id=request.workload_id,
+            decision_id=request.decision_id or "dec_default",
+            execution_attempt_id=final_attempt_id,
+            batch_job_id=request.batch_job_name,
+            region=request.region,
+            event_type=f"BATCH_{clean_status}",
+            status=clean_status,
+            correlation_id=request.correlation_id or "",
+            details={
+                "actual_runtime_seconds": request.actual_runtime_seconds,
+                "actual_cost": request.actual_cost,
+                "workflow_execution_id": request.workflow_execution_id,
+            },
+            event_id=f"exec_ev_{final_attempt_id}_{clean_status.lower()}",
+        )
+    except RuntimeError as exc:
+        logger.exception("Could not persist terminal Batch status for %s", request.batch_job_name)
+        raise HTTPException(
+            status_code=503,
+            detail="Execution telemetry write failed; retry the callback.",
+        ) from exc
+
     return {"status": "recorded", "execution_attempt_id": final_attempt_id}

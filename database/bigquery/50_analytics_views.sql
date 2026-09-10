@@ -75,7 +75,8 @@ SELECT
   currency_code,
   retryable,
   error_code,
-  error_message
+  error_message,
+  event_details
 FROM `greencompute_events.execution_events`
 QUALIFY ROW_NUMBER() OVER (
   PARTITION BY execution_attempt_id

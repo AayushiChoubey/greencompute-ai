@@ -1,6 +1,7 @@
 """Google Cloud Batch submission adapter and execution event recorder."""
 
 import json
+import logging
 import os
 import uuid
 from datetime import datetime, timezone
@@ -10,6 +11,7 @@ from google.cloud import bigquery
 from app.models import Candidate, ProvisioningModel
 
 PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT", "greencompute-ai")
+logger = logging.getLogger(__name__)
 
 
 class CloudBatchAdapter:
@@ -90,10 +92,11 @@ class CloudBatchAdapter:
         status: str,
         correlation_id: str,
         details: Optional[Dict[str, Any]] = None,
+        event_id: Optional[str] = None,
     ):
         """Writes execution trace directly to greencompute_events.execution_events."""
         now_iso = datetime.now(timezone.utc).isoformat()
-        event_id = f"exec_ev_{uuid.uuid4().hex[:12]}"
+        event_id = event_id or f"exec_ev_{uuid.uuid4().hex[:12]}"
 
         row = [{
             "event_id": event_id,
@@ -122,9 +125,13 @@ class CloudBatchAdapter:
 
         errors = self.bq_client.insert_rows_json(
             f"{PROJECT_ID}.greencompute_events.execution_events",
-            row
+            row,
+            # The callback can be retried after a network failure. Supplying an
+            # insert ID lets BigQuery de-duplicate immediate retried inserts.
+            row_ids=[event_id],
         )
         if errors:
-            print(f"Failed to record execution event: {errors}")
-        else:
-            print(f"Recorded execution event {event_id} for job {batch_job_id}")
+            logger.error("Failed to record execution event %s: %s", event_id, errors)
+            raise RuntimeError(f"BigQuery rejected execution event {event_id}: {errors}")
+
+        logger.info("Recorded execution event %s for job %s", event_id, batch_job_id)
