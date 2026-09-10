@@ -8,15 +8,13 @@ main:
           - max_retries: 40
           - retry_count: 0
           - sleep_seconds: 5
+          - workflow_execution_id: ${sys.get_env("GOOGLE_CLOUD_WORKFLOW_EXECUTION_ID")}
 
     # 1. Optimize workload via GreenCompute API
     - runOptimizer:
         call: http.post
         args:
           url: ${api_base_url + "/api/v1/optimize"}
-          auth:
-            type: OIDC
-            audience: ${api_base_url}
           body: ${workload}
         result: opt_response
 
@@ -36,9 +34,6 @@ main:
         call: http.post
         args:
           url: ${api_base_url + "/api/v1/execute"}
-          auth:
-            type: OIDC
-            audience: ${api_base_url}
           body:
             workload_id: ${workload.workload_id}
             decision_id: ${selected.candidate_id}
@@ -50,6 +45,21 @@ main:
         assign:
           - batch_job_name: ${exec_response.body.batch_job_name}
           - exec_attempt_id: ${exec_response.body.execution_attempt_id}
+
+    # Store this link before polling. A later Workflow failure is then visible
+    # beside the submitted Batch attempt in the telemetry table.
+    - linkExecutionToWorkflow:
+        call: http.post
+        args:
+          url: ${api_base_url + "/api/v1/execution-workflow-link"}
+          body:
+            workload_id: ${workload.workload_id}
+            decision_id: ${selected.candidate_id}
+            execution_attempt_id: ${exec_attempt_id}
+            batch_job_name: ${batch_job_name}
+            region: ${selected_region}
+            correlation_id: ${opt_run_id}
+            workflow_execution_id: ${workflow_execution_id}
 
     # 3. Poll Batch API until execution reaches a terminal state
     - pollBatchJobStatus:
@@ -103,9 +113,6 @@ main:
         call: http.post
         args:
           url: ${api_base_url + "/api/v1/execution-callback"}
-          auth:
-            type: OIDC
-            audience: ${api_base_url}
           body:
             workload_id: ${workload.workload_id}
             decision_id: ${selected.candidate_id}
@@ -116,7 +123,7 @@ main:
             actual_runtime_seconds: ${actual_seconds}
             actual_cost: ${actual_cost}
             correlation_id: ${opt_run_id}
-            workflow_execution_id: ${sys.get_env("GOOGLE_CLOUD_WORKFLOW_EXECUTION_ID")}
+            workflow_execution_id: ${workflow_execution_id}
         result: callback_result
         retry: ${http.default_retry}
 
@@ -125,9 +132,6 @@ main:
         call: http.post
         args:
           url: ${api_base_url + "/api/v1/explain"}
-          auth:
-            type: OIDC
-            audience: ${api_base_url}
           body:
             workload: ${workload}
             selected_candidate: ${selected}

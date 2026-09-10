@@ -21,6 +21,15 @@ function workflowLogsUrl(executionId) {
   return `https://console.cloud.google.com/logs/query;query=${encodeURIComponent(query)}?project=greencompute-ai`;
 }
 
+function workflowStatusText(executionName, info) {
+  let text = `Workflow Execution Dispatched:\n${executionName}\nStatus: ${info.state || 'ACTIVE'}`;
+  if (info.error) {
+    const error = typeof info.error === 'string' ? info.error : JSON.stringify(info.error);
+    text += `\nError: ${error}`;
+  }
+  return text;
+}
+
 function startElapsedTimer() {
   clearInterval(timerInterval);
   startTime = Date.now();
@@ -105,8 +114,10 @@ async function runDispatch(dispatch) {
       
       const resWfEl = document.getElementById('resWorkflow');
       if (resWfEl) {
-        resWfEl.innerText = `Workflow Execution Dispatched:\n${execName}\nStatus: ${initialState}`;
+        resWfEl.innerText = workflowStatusText(execName, { state: initialState });
       }
+      const logsLink = document.getElementById('logsLink');
+      if (logsLink && execId) logsLink.href = workflowLogsUrl(execId);
       badgeStatus.className = "px-2.5 py-0.5 text-xs font-semibold rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/30";
       badgeStatus.innerText = 'WORKFLOW EXECUTING';
 
@@ -119,7 +130,7 @@ async function runDispatch(dispatch) {
             const info = await statusRes.json();
             const currentState = info.state || 'ACTIVE';
             if (resWfEl) {
-              resWfEl.innerText = `Workflow Execution Dispatched:\n${execName}\nStatus: ${currentState}`;
+              resWfEl.innerText = workflowStatusText(execName, info);
             }
 
             if (currentState === 'SUCCEEDED') {

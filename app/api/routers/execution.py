@@ -51,6 +51,16 @@ class ExecutionCallbackRequest(BaseModel):
     workflow_execution_id: Optional[str] = None
 
 
+class WorkflowLinkRequest(BaseModel):
+    workload_id: str
+    decision_id: Optional[str] = "dec_default"
+    execution_attempt_id: str
+    batch_job_name: str
+    region: str
+    correlation_id: Optional[str] = ""
+    workflow_execution_id: str
+
+
 @router.post("/execute", response_model=ExecuteResponse)
 def execute_decision(request: ExecuteRequest) -> ExecuteResponse:
     execution_attempt_id = f"exec_att_{uuid.uuid4().hex[:12]}"
@@ -91,6 +101,36 @@ def execute_decision(request: ExecuteRequest) -> ExecuteResponse:
         provisioning_model=candidate.provisioning_model.value if hasattr(candidate.provisioning_model, "value") else str(candidate.provisioning_model),
         message=f"Job dispatched to {candidate.region}"
     )
+
+
+@router.post("/execution-workflow-link")
+def link_execution_to_workflow(request: WorkflowLinkRequest):
+    """Attach the Workflow execution ID as soon as Batch submission succeeds.
+
+    This event makes workflow diagnostics available even when a later Workflow
+    step fails before it can send the terminal Batch callback.
+    """
+    try:
+        batch_adapter.record_execution_event(
+            workload_id=request.workload_id,
+            decision_id=request.decision_id or "dec_default",
+            execution_attempt_id=request.execution_attempt_id,
+            batch_job_id=request.batch_job_name,
+            region=request.region,
+            event_type="WORKFLOW_DISPATCHED",
+            status="SUBMITTED",
+            correlation_id=request.correlation_id or "",
+            details={"workflow_execution_id": request.workflow_execution_id},
+            event_id=f"exec_ev_{request.execution_attempt_id}_workflow_dispatched",
+        )
+    except RuntimeError as exc:
+        logger.exception("Could not link Batch job %s to its Workflow", request.batch_job_name)
+        raise HTTPException(
+            status_code=503,
+            detail="Could not persist Workflow execution linkage.",
+        ) from exc
+
+    return {"status": "linked", "execution_attempt_id": request.execution_attempt_id}
 
 
 @router.post("/execution-callback")
