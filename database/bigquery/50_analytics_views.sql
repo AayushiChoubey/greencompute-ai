@@ -59,29 +59,47 @@ LEFT JOIN `greencompute_events.optimization_decisions` d
   ON c.candidate_evaluation_id = d.candidate_evaluation_id;
 
 CREATE OR REPLACE VIEW `greencompute_analytics.v_execution_summary` AS
+WITH latest_event AS (
+  SELECT *
+  FROM `greencompute_events.execution_events`
+  QUALIFY ROW_NUMBER() OVER (
+    PARTITION BY execution_attempt_id
+    ORDER BY event_timestamp DESC, ingested_at DESC
+  ) = 1
+),
+workflow_link AS (
+  SELECT
+    execution_attempt_id,
+    ARRAY_AGG(
+      JSON_VALUE(event_details, '$.workflow_execution_id')
+      IGNORE NULLS
+      ORDER BY event_timestamp DESC, ingested_at DESC
+      LIMIT 1
+    )[SAFE_OFFSET(0)] AS workflow_execution_id
+  FROM `greencompute_events.execution_events`
+  GROUP BY execution_attempt_id
+)
 SELECT
-  organization_id,
-  workload_run_id,
-  decision_id,
-  execution_attempt_id,
-  batch_job_id,
-  cloud_provider,
-  region,
-  attempt_number,
-  execution_status,
-  event_timestamp AS latest_status_at,
-  actual_runtime_seconds,
-  actual_cost,
-  currency_code,
-  retryable,
-  error_code,
-  error_message,
-  event_details
-FROM `greencompute_events.execution_events`
-QUALIFY ROW_NUMBER() OVER (
-  PARTITION BY execution_attempt_id
-  ORDER BY event_timestamp DESC, ingested_at DESC
-) = 1;
+  e.organization_id,
+  e.workload_run_id,
+  e.decision_id,
+  e.execution_attempt_id,
+  e.batch_job_id,
+  e.cloud_provider,
+  e.region,
+  e.attempt_number,
+  e.execution_status,
+  e.event_timestamp AS latest_status_at,
+  e.actual_runtime_seconds,
+  e.actual_cost,
+  e.currency_code,
+  e.retryable,
+  e.error_code,
+  e.error_message,
+  e.event_details,
+  w.workflow_execution_id
+FROM latest_event e
+LEFT JOIN workflow_link w USING (execution_attempt_id);
 
 CREATE OR REPLACE VIEW `greencompute_analytics.v_daily_decision_metrics` AS
 SELECT

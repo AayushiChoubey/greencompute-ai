@@ -5,6 +5,7 @@ let telemetryPollInterval = null;
 let startTime = null;
 
 function workflowExecutionId(record) {
+  if (record.workflow_execution_id) return record.workflow_execution_id;
   let details = record.event_details || {};
   if (typeof details === 'string') {
     try {
