@@ -163,3 +163,74 @@ def test_optimizer_returns_traceable_decision_id():
     response, _ = optimize(request, weighted_metrics())
 
     assert response.decision_id.startswith("dec_")
+
+
+def test_oversized_machine_does_not_distort_cost_weighted_selection():
+    now = datetime.now(timezone.utc)
+    request = OptimizeRequest(
+        workload_name="right_sizing_test",
+        data_location_type=DataLocationType.DATA_LOCAL,
+        home_region="asia-south1",
+        required_vcpus=4,
+        required_memory_gb=16,
+        estimated_runtime_minutes=60,
+        earliest_start_at=now,
+        deadline_at=now + timedelta(hours=2),
+        spot_allowed=True,
+        checkpointable=True,
+        minimum_reliability_score=0.80,
+        objective_weights=ObjectiveWeights(
+            cost=0.80,
+            carbon=0.05,
+            reliability=0.10,
+            sla_buffer=0.05,
+        ),
+    )
+    metrics = [
+        RegionMetric(
+            region="asia-south1",
+            machine_type="n2-standard-4",
+            provisioning_model=ProvisioningModel.STANDARD,
+            vcpus=4,
+            memory_gb=16,
+            hourly_cost_usd=0.20,
+            carbon_score=650,
+            reliability_score=0.99,
+        ),
+        RegionMetric(
+            region="asia-south1",
+            machine_type="n2-standard-4",
+            provisioning_model=ProvisioningModel.SPOT,
+            vcpus=4,
+            memory_gb=16,
+            hourly_cost_usd=0.05,
+            carbon_score=650,
+            reliability_score=0.85,
+        ),
+        RegionMetric(
+            region="asia-south1",
+            machine_type="n2-standard-32",
+            provisioning_model=ProvisioningModel.STANDARD,
+            vcpus=32,
+            memory_gb=128,
+            hourly_cost_usd=3.20,
+            carbon_score=650,
+            reliability_score=0.99,
+        ),
+    ]
+
+    response, _ = optimize(request, metrics)
+
+    assert response.selected_candidate is not None
+    assert response.selected_candidate.machine_type == "n2-standard-4"
+    assert response.selected_candidate.provisioning_model == ProvisioningModel.SPOT
+    oversized = next(
+        candidate
+        for candidate in response.candidates
+        if candidate.machine_type == "n2-standard-32"
+    )
+    assert oversized.is_feasible is False
+    assert any(
+        reason.startswith("DOMINATED_RESOURCE_CONFIGURATION")
+        for reason in oversized.rejection_reasons
+    )

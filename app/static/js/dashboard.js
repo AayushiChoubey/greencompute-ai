@@ -58,7 +58,18 @@ function resetDecisionView() {
   document.getElementById('resCost').innerText = '—';
   document.getElementById('resExplanation').innerText = 'Evaluating workload constraints and candidate metrics...';
   document.getElementById('resWeights').innerText = 'Weights: —';
-  document.getElementById('candidateRows').innerHTML = '<tr><td colspan="7" class="p-3 text-center text-slate-600">Evaluating candidates...</td></tr>';
+  document.getElementById('candidateRows').innerHTML = '<tr><td colspan="9" class="p-3 text-center text-slate-600">Evaluating candidates...</td></tr>';
+  const workflowBox = document.getElementById('workflowStatusBox');
+  const workflowText = document.getElementById('resWorkflow');
+  if (workflowBox) workflowBox.classList.add('hidden');
+  if (workflowText) workflowText.innerText = '';
+}
+
+function formatUtcTimestamp(value) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toISOString().replace('T', ' ').replace(':00.000Z', 'Z');
 }
 
 function renderCandidateEvidence(opt, parsedSpec) {
@@ -72,7 +83,7 @@ function renderCandidateEvidence(opt, parsedSpec) {
   if (!tbody) return;
   const candidates = opt?.candidates || [];
   if (candidates.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" class="p-3 text-center text-slate-600">No candidates were generated.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="p-3 text-center text-slate-600">No candidates were generated.</td></tr>';
     return;
   }
 
@@ -89,9 +100,11 @@ function renderCandidateEvidence(opt, parsedSpec) {
     row.innerHTML = `
       <td class="p-2.5 font-mono">${candidate.region}</td>
       <td class="p-2.5">${candidate.machine_type} · ${candidate.provisioning_model}</td>
+      <td class="p-2.5 font-mono whitespace-nowrap">${formatUtcTimestamp(candidate.scheduled_start_at)}</td>
       <td class="p-2.5 font-mono">$${Number(candidate.estimated_compute_cost_usd).toFixed(6)}</td>
       <td class="p-2.5 font-mono">${Number(candidate.carbon_score).toFixed(1)}</td>
       <td class="p-2.5 font-mono">${Number(candidate.reliability_score).toFixed(2)}</td>
+      <td class="p-2.5 font-mono">${candidate.sla_buffer_minutes}m</td>
       <td class="p-2.5 font-mono">${candidate.final_score === null || candidate.final_score === undefined ? '—' : Number(candidate.final_score).toFixed(4)}</td>
       <td class="p-2.5 font-semibold">${result}</td>
     `;
@@ -122,7 +135,14 @@ async function runDispatch(dispatch) {
       body: JSON.stringify({ prompt: prompt, auto_optimize: true })
     });
     
-    if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    if (!res.ok) {
+      let detail = res.statusText;
+      try {
+        const errorBody = await res.json();
+        detail = errorBody.detail || JSON.stringify(errorBody);
+      } catch (_) {}
+      throw new Error(`HTTP ${res.status}: ${detail}`);
+    }
     
     const data = await res.json();
     const opt = data.optimization_result;
@@ -216,7 +236,7 @@ async function runDispatch(dispatch) {
           stopElapsedTimer();
         }
       }, 3500);
-    } else if (!dispatch) {
+    } else {
       if (wfBox) wfBox.classList.add('hidden');
       stopElapsedTimer();
     }

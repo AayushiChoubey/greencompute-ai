@@ -40,6 +40,67 @@ class PromptIngestionResponse(BaseModel):
     workflow_execution: Optional[dict] = None
 
 
+def candidate_evidence(
+    candidates: List[Candidate],
+    selected_candidate: Optional[Candidate],
+    home_region: Optional[str] = None,
+    limit: int = 8,
+) -> List[Candidate]:
+    """Return a diverse, compact audit sample instead of repeated time slots."""
+    evidence: List[Candidate] = []
+    seen = set()
+
+    priority_candidates: List[Candidate] = []
+    if selected_candidate:
+        priority_candidates.append(selected_candidate)
+
+    if home_region:
+        home_candidate = next(
+            (
+                candidate
+                for candidate in candidates
+                if candidate.region == home_region and candidate.is_feasible
+            ),
+            None,
+        )
+        if home_candidate:
+            priority_candidates.append(home_candidate)
+
+    # Guarantee that users can compare at least one candidate for each
+    # region/provisioning combination before lower-value shape variations.
+    region_provisioning_seen = set()
+    for candidate in candidates:
+        key = (candidate.region, candidate.provisioning_model, candidate.is_feasible)
+        if key not in region_provisioning_seen:
+            region_provisioning_seen.add(key)
+            priority_candidates.append(candidate)
+
+    priority_ids = {candidate.candidate_id for candidate in priority_candidates}
+    ordered = priority_candidates + [
+        candidate for candidate in candidates if candidate.candidate_id not in priority_ids
+    ]
+
+    for candidate in ordered:
+        reason_codes = tuple(
+            reason.split(":", 1)[0] for reason in candidate.rejection_reasons
+        )
+        key = (
+            candidate.region,
+            candidate.machine_type,
+            candidate.provisioning_model,
+            candidate.is_feasible,
+            reason_codes,
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        evidence.append(candidate)
+        if len(evidence) >= limit:
+            break
+
+    return evidence
+
+
 @router.post("/optimize", response_model=OptimizeResponse)
 def optimize_workload(request: OptimizeRequest) -> OptimizeResponse:
     """Read BigQuery options, optimize against hard constraints, and log complete audit trail."""
@@ -65,7 +126,11 @@ def optimize_workload(request: OptimizeRequest) -> OptimizeResponse:
         print(f"Audit log warning: {e}")
 
     if response.candidates:
-        response.candidates = response.candidates[:3]
+        response.candidates = candidate_evidence(
+            response.candidates,
+            response.selected_candidate,
+            home_region=request.home_region,
+        )
     return response
 
 
@@ -118,16 +183,15 @@ def ingest_workload_prompt(
 
     wf_result = None
     if dispatch:
-        if not opt_result or not opt_result.selected_candidate:
-            raise HTTPException(
-                status_code=422,
-                detail="No feasible execution plan satisfies the workload constraints; dispatch was prevented.",
-            )
-        try:
-            workload_dict = parsed_spec.model_dump(mode="json")
-            wf_result = workflow_adapter.trigger_workflow(workload_dict)
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to dispatch workflow: {str(e)}")
+        # An infeasible optimization is a valid business result, not a broken
+        # HTTP request. Return the evidence so the dashboard can explain why
+        # execution was prevented instead of replacing it with a generic 422.
+        if opt_result and opt_result.selected_candidate:
+            try:
+                workload_dict = parsed_spec.model_dump(mode="json")
+                wf_result = workflow_adapter.trigger_workflow(workload_dict)
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Failed to dispatch workflow: {str(e)}")
 
     return PromptIngestionResponse(
         prompt=request.prompt,

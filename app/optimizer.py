@@ -63,6 +63,83 @@ def _apply_cost_increase_guardrail(
             )
 
 
+def _apply_dominated_resource_guardrail(
+    request: OptimizeRequest,
+    candidates: List[Candidate],
+    metrics: List[RegionMetric],
+) -> None:
+    """Reject oversized shapes that provide no modeled benefit.
+
+    Runtime is currently workload-level rather than machine-performance-aware.
+    Therefore, within the same region, provisioning model, and start time, a
+    more expensive shape with at least as many resources cannot improve any
+    modeled objective. Leaving those shapes in the normalization range lets an
+    extremely expensive oversized VM compress meaningful price differences
+    between right-sized Standard and Spot options.
+    """
+    metric_by_key = {
+        (metric.region, metric.machine_type, metric.provisioning_model): metric
+        for metric in metrics
+    }
+    initially_feasible = [candidate for candidate in candidates if candidate.is_feasible]
+
+    for candidate in initially_feasible:
+        candidate_metric = metric_by_key.get(
+            (candidate.region, candidate.machine_type, candidate.provisioning_model)
+        )
+        if candidate_metric is None:
+            continue
+
+        for alternative in initially_feasible:
+            if alternative.candidate_id == candidate.candidate_id:
+                continue
+            if (
+                alternative.region != candidate.region
+                or alternative.provisioning_model != candidate.provisioning_model
+                or alternative.scheduled_start_at != candidate.scheduled_start_at
+            ):
+                continue
+
+            alternative_metric = metric_by_key.get(
+                (alternative.region, alternative.machine_type, alternative.provisioning_model)
+            )
+            if alternative_metric is None:
+                continue
+
+            no_more_resources = (
+                alternative_metric.vcpus <= candidate_metric.vcpus
+                and alternative_metric.memory_gb <= candidate_metric.memory_gb
+            )
+            still_satisfies_request = (
+                alternative_metric.vcpus >= request.required_vcpus
+                and alternative_metric.memory_gb >= request.required_memory_gb
+            )
+            no_more_expensive = (
+                alternative.estimated_compute_cost_usd
+                <= candidate.estimated_compute_cost_usd
+            )
+            strictly_better_fit = (
+                alternative_metric.vcpus < candidate_metric.vcpus
+                or alternative_metric.memory_gb < candidate_metric.memory_gb
+                or alternative.estimated_compute_cost_usd
+                < candidate.estimated_compute_cost_usd
+            )
+
+            if (
+                no_more_resources
+                and still_satisfies_request
+                and no_more_expensive
+                and strictly_better_fit
+            ):
+                candidate.is_feasible = False
+                candidate.rejection_reasons.append(
+                    "DOMINATED_RESOURCE_CONFIGURATION: "
+                    f"{alternative.machine_type} satisfies the requested resources "
+                    "at equal or lower modeled cost"
+                )
+                break
+
+
 def _possible_start_times(request: OptimizeRequest):
     if request.start_mode == StartMode.EXACT:
         return [request.earliest_start_at]
@@ -153,6 +230,8 @@ def optimize(request: OptimizeRequest, metrics: List[RegionMetric]) -> Tuple[Opt
     opt_run_id = f"opt_{uuid4().hex[:12]}"
     decision_id = f"dec_{uuid4().hex[:12]}"
 
+    _apply_dominated_resource_guardrail(request, candidates, metrics)
+    feasible = [c for c in candidates if c.is_feasible]
     _apply_cost_increase_guardrail(request, feasible)
     feasible = [c for c in feasible if c.is_feasible]
 
